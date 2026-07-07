@@ -1,0 +1,2073 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KPI·OKR 대시보드</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="supabase-config.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f8fafc; --surface: #fff; --border: #e2e8f0;
+      --text: #0f172a; --text-secondary: #64748b; --text-muted: #94a3b8;
+      --primary: #2563eb; --primary-light: #eff6ff; --purple: #7c3aed;
+      --sidebar-bg: #0f172a; --sidebar-text: #cbd5e1; --radius: 10px; --radius-sm: 6px;
+    }
+    body { font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; color: var(--text); background: var(--bg); min-height: 100vh; }
+    button { font-family: inherit; cursor: pointer; border: none; background: none; }
+    select, input, textarea { font-family: inherit; font-size: 13px; }
+    input[type=text], input[type=number], textarea, select {
+      padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+      background: var(--surface); color: var(--text); width: 100%;
+    }
+    input:disabled { background: var(--bg); color: var(--text-muted); }
+    textarea { resize: vertical; min-height: 60px; }
+    .app { display: flex; min-height: 100vh; }
+    .sidebar { width: 240px; min-width: 240px; background: var(--sidebar-bg); color: var(--sidebar-text); display: flex; flex-direction: column; padding: 24px 0; }
+    .sidebar-header { padding: 0 20px 24px; border-bottom: 1px solid #1e293b; }
+    .sidebar-header h1 { font-size: 15px; font-weight: 600; color: #f1f5f9; }
+    .sidebar-header p { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .sidebar-nav { flex: 1; padding: 16px 12px; display: flex; flex-direction: column; gap: 2px; }
+    .nav-section-label { font-size: 11px; font-weight: 600; color: #475569; padding: 12px 12px 6px; }
+    .nav-item { display: block; width: 100%; text-align: left; padding: 9px 12px; border-radius: var(--radius-sm); font-size: 13px; color: var(--sidebar-text); }
+    .nav-item:hover { background: #1e293b; color: #f1f5f9; }
+    .nav-item.active { background: var(--primary); color: #fff; font-weight: 500; }
+    .nav-item.parent { font-weight: 500; }
+    .nav-item-input { margin-bottom: 4px; }
+    .sidebar-footer { padding: 16px 20px 0; border-top: 1px solid #1e293b; font-size: 11px; color: #475569; display: flex; flex-direction: column; gap: 2px; }
+    .sync-badge { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; padding: 4px 8px; border-radius: 100px; font-size: 10px; font-weight: 600; }
+    .sync-badge.synced { background: #05966922; color: #34d399; }
+    .sync-badge.loading { background: #2563eb22; color: #60a5fa; }
+    .sync-badge.error { background: #dc262622; color: #f87171; }
+    .sync-badge.offline { background: #47556933; color: #94a3b8; }
+    .sync-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .header-bar { display: flex; align-items: center; justify-content: space-between; padding: 16px 28px; background: var(--surface); border-bottom: 1px solid var(--border); gap: 16px; flex-wrap: wrap; }
+    .header-tabs { display: flex; gap: 4px; background: var(--bg); padding: 4px; border-radius: var(--radius); overflow-x: auto; max-width: 100%; }
+    .header-tab { padding: 8px 16px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; color: var(--text-secondary); white-space: nowrap; flex-shrink: 0; }
+    .header-tab:hover { color: var(--text); }
+    .header-tab.active { background: var(--surface); color: var(--primary); }
+    .header-controls { display: flex; gap: 16px; align-items: center; }
+    .control-group { display: flex; align-items: center; gap: 8px; }
+    .control-group label { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+    .content { flex: 1; overflow-y: auto; padding: 24px 28px 40px; }
+    .view-header { display: flex; justify-content: space-between; margin-bottom: 24px; }
+    .view-header h2 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+    .view-header p { font-size: 13px; color: var(--text-secondary); }
+    .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+    .summary-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; display: flex; gap: 16px; }
+    .summary-card-clickable { cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; }
+    .summary-card-clickable:hover { border-color: var(--primary); box-shadow: 0 4px 12px rgba(37,99,235,0.12); }
+    .alert-item-clickable { cursor: pointer; transition: background 0.15s; }
+    .alert-item-clickable:hover { background: #eff6ff; }
+    .nav-highlight { animation: nav-highlight-pulse 2.5s ease; }
+    @keyframes nav-highlight-pulse { 0%,100% { background: transparent; } 15%,85% { background: #fef9c3; } }
+    tr.nav-highlight td { background: #fef9c3 !important; }
+    .okr-card.nav-highlight { box-shadow: 0 0 0 2px #facc15; background: #fffbeb; }
+    .excel-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .excel-note { font-size: 12px; color: var(--text-muted); margin-bottom: 16px; }
+    .summary-icon { width: 44px; height: 44px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+    .summary-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+    .summary-value { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+    .summary-sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+    .overview-panels { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; align-items: stretch; }
+    .overview-panel { display: flex; flex-direction: column; min-height: 380px; }
+    .overview-panel-body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+    .overview-chart-wrap { flex: 1; position: relative; min-height: 240px; }
+    .overview-chart-wrap canvas { width: 100% !important; height: 100% !important; }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+    .panel h2, .panel h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+    .panel-desc { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; min-height: 18px; line-height: 1.5; }
+    .chart-legend { display: flex; gap: 20px; justify-content: center; margin-top: 8px; font-size: 12px; color: var(--text-secondary); flex-shrink: 0; }
+    .chart-legend span { display: flex; align-items: center; gap: 6px; }
+    .chart-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+    .dept-status-list { flex: 1; display: flex; flex-direction: column; gap: 0; height: 100%; }
+    .dept-status-item { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 0; margin: 0; border-bottom: 1px solid var(--border); }
+    .dept-status-item:last-child { border-bottom: none; }
+    .dept-status-header { display: flex; justify-content: space-between; margin-bottom: 6px; }
+    .dept-name { font-size: 13px; font-weight: 600; }
+    .dept-scores { font-size: 12px; color: var(--text-muted); }
+    .dept-bars { display: flex; flex-direction: column; gap: 4px; }
+    .dept-bar-row { display: grid; grid-template-columns: 32px 1fr; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); }
+    .progress-bar-wrap { display: flex; align-items: center; gap: 8px; width: 100%; }
+    .progress-bar-track { flex: 1; background: #f1f5f9; border-radius: 100px; overflow: hidden; height: 8px; }
+    .progress-bar-fill { border-radius: 100px; height: 100%; transition: width 0.4s; }
+    .progress-bar-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); min-width: 36px; text-align: right; }
+    .status-badge { display: inline-flex; padding: 3px 10px; border-radius: 100px; font-size: 11px; font-weight: 600; border: 1px solid; white-space: nowrap; }
+    .alert-list { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+    .alert-item { display: flex; gap: 12px; padding: 12px; background: var(--bg); border-radius: var(--radius-sm); }
+    .alert-item strong { display: block; font-size: 13px; margin-bottom: 2px; }
+    .alert-item .meta { font-size: 12px; color: var(--text-muted); }
+    .kpi-table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 28px; }
+    .dept-kpi-section h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; padding: 10px 14px; font-size: 11px; font-weight: 600; color: var(--text-muted); background: var(--bg); border-bottom: 1px solid var(--border); }
+    td { padding: 14px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fafbfc; }
+    .kpi-name-cell strong { display: block; font-weight: 500; margin-bottom: 2px; }
+    .kpi-name-cell span { font-size: 12px; color: var(--text-muted); }
+    .icon-btn { padding: 6px; border-radius: var(--radius-sm); color: var(--text-muted); }
+    .icon-btn:hover { background: var(--bg); color: var(--primary); }
+    .edit-input { width: 80px; padding: 4px 8px; border: 1px solid var(--primary); border-radius: var(--radius-sm); }
+    .okr-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 16px; }
+    .okr-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+    .okr-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .okr-dept-tag { font-size: 11px; font-weight: 600; color: var(--purple); background: #f5f3ff; padding: 4px 10px; border-radius: 100px; }
+    .okr-progress-ring { width: 44px; height: 44px; border-radius: 50%; border: 3px solid #ede9fe; border-top-color: var(--purple); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: var(--purple); }
+    .okr-objective { font-size: 15px; font-weight: 600; line-height: 1.5; margin-bottom: 12px; }
+    .kr-list { list-style: none; display: flex; flex-direction: column; gap: 14px; }
+    .kr-item { padding: 12px; background: var(--bg); border-radius: var(--radius-sm); }
+    .kr-header { display: flex; justify-content: space-between; margin-bottom: 8px; }
+    .kr-title { font-size: 13px; font-weight: 500; }
+    .kr-progress-pct { font-size: 12px; font-weight: 700; color: var(--purple); }
+    .kr-metrics { display: flex; align-items: center; gap: 16px; margin-top: 8px; font-size: 12px; color: var(--text-secondary); flex-wrap: wrap; }
+    .okr-footer { display: flex; justify-content: space-between; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-muted); }
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
+    .input-mode-tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+    .input-mode-tab { padding: 10px 20px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; color: var(--text-secondary); border: 1px solid var(--border); background: var(--surface); }
+    .input-mode-tab.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+    .input-layout { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; align-items: start; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .form-field { display: flex; flex-direction: column; gap: 6px; }
+    .form-field.full { grid-column: 1 / -1; }
+    .form-field label { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+    .form-actions { display: flex; gap: 10px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+    .btn-primary, .btn-secondary { display: inline-flex; align-items: center; gap: 6px; padding: 9px 18px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-secondary { background: var(--bg); color: var(--text-secondary); border: 1px solid var(--border); }
+    .btn-text { font-size: 12px; color: var(--primary); font-weight: 500; }
+    .form-message { padding: 10px 16px; border-radius: var(--radius-sm); font-size: 13px; margin-bottom: 16px; }
+    .form-message.success { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
+    .form-message.error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+    .kr-form-section { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+    .kr-form-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .kr-form-row { display: grid; grid-template-columns: 36px 1fr 72px 72px 56px 32px; gap: 8px; align-items: center; margin-bottom: 8px; }
+    .kr-index { font-size: 11px; font-weight: 700; color: var(--purple); text-align: center; }
+    .input-list-items { display: flex; flex-direction: column; gap: 8px; max-height: 520px; overflow-y: auto; }
+    .input-list-item { display: flex; justify-content: space-between; gap: 12px; padding: 12px; background: var(--bg); border-radius: var(--radius-sm); }
+    .input-list-item strong { display: block; font-size: 13px; margin: 4px 0 2px; }
+    .list-item-tag { font-size: 10px; font-weight: 600; color: var(--primary); background: var(--primary-light); padding: 2px 8px; border-radius: 100px; }
+    .list-item-meta { font-size: 11px; color: var(--text-muted); }
+    .list-item-actions { display: flex; gap: 4px; flex-shrink: 0; }
+    .list-empty { font-size: 13px; color: var(--text-muted); text-align: center; padding: 24px; }
+    .standalone-note { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; padding: 10px 16px; border-radius: var(--radius-sm); font-size: 12px; margin-bottom: 16px; }
+    .org-structure-panel { margin-bottom: 16px; }
+    .org-tree { margin-top: 8px; }
+    .org-tree-root { margin-bottom: 12px; }
+    .org-node { display: inline-block; padding: 8px 14px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; background: var(--bg); border: 1px solid var(--border); }
+    .org-node-parent { background: var(--primary-light); border-color: #bfdbfe; color: var(--primary); font-weight: 600; }
+    .org-tree-children { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; padding-left: 24px; border-left: 2px solid var(--border); margin-left: 8px; }
+    .org-tree-flat { padding-left: 0; border-left: none; margin-left: 0; }
+    .org-tree-item .org-node { width: 100%; }
+    .input-layout-wide { grid-template-columns: 1fr; }
+    .objectives-section { margin-top: 20px; }
+    .objective-block { margin-bottom: 16px; padding: 16px; background: var(--bg); border-radius: var(--radius-sm); border: 1px solid var(--border); }
+    .objective-block-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .obj-index { font-size: 12px; font-weight: 700; color: var(--purple); }
+    .form-grid.compact { margin-top: 12px; }
+    .kr-form-row-extended { display: grid; grid-template-columns: 36px 1fr auto 32px; gap: 8px; align-items: start; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px dashed var(--border); }
+    .kr-form-row-extended .kr-note-input { grid-column: 2 / -1; min-height: 36px; font-size: 12px; }
+    .kr-rate-field { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .kr-fixed-target { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+    .kr-unit-suffix { font-size: 12px; color: var(--text-secondary); }
+    .kpi-edit-fields { display: flex; flex-direction: column; gap: 6px; min-width: 120px; }
+    .kpi-type-cell { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+    .progress-na { font-size: 12px; color: var(--text-muted); }
+    .okr-progress-section { margin-bottom: 16px; padding: 12px; background: var(--bg); border-radius: var(--radius-sm); }
+    .okr-progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .section-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+    .progress-note-text { font-size: 13px; line-height: 1.5; color: var(--text); white-space: pre-wrap; }
+    .progress-note-empty { font-size: 12px; color: var(--text-muted); font-style: italic; }
+    .progress-edit-fields { display: flex; flex-direction: column; gap: 10px; }
+    .progress-edit-fields label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+    .kr-edit-fields { margin-top: 10px; }
+    .kr-metrics-row { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+    .kr-target-label { font-size: 12px; color: var(--text-muted); padding-bottom: 6px; }
+    .kr-note { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); }
+    .kr-edit-btn, .action-btns button { padding: 6px; border-radius: var(--radius-sm); color: var(--text-muted); }
+    .kr-edit-btn:hover, .action-btns button:hover { background: var(--bg); color: var(--primary); }
+    .action-btns { display: flex; gap: 4px; }
+    .action-btns.inline { margin-left: auto; }
+    .edit-input.small { width: 64px; }
+    .nav-loading-bar { height: 2px; background: var(--primary); opacity: 0.6; animation: nav-load 0.8s ease infinite; display: none; }
+    @keyframes nav-load { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
+    .content-pending { opacity: 0.85; pointer-events: none; }
+    .auth-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%); }
+    .auth-screen[hidden] { display: none !important; }
+    .auth-card { width: 100%; max-width: 420px; background: var(--surface); border-radius: 14px; padding: 32px; box-shadow: 0 20px 50px rgba(0,0,0,0.35); }
+    .auth-card h1 { font-size: 22px; font-weight: 700; margin-bottom: 6px; color: var(--text); }
+    .auth-card .auth-desc { font-size: 13px; color: var(--text-secondary); margin-bottom: 24px; line-height: 1.5; }
+    .auth-field { margin-bottom: 14px; }
+    .auth-field label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+    .auth-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+    .auth-actions .btn-primary { width: 100%; justify-content: center; padding: 11px; }
+    .auth-link { font-size: 12px; color: var(--primary); text-align: center; margin-top: 12px; display: block; }
+    .auth-link:hover { text-decoration: underline; }
+    .user-info { padding: 10px 12px; margin: 8px 12px 0; background: #1e293b; border-radius: var(--radius-sm); font-size: 11px; }
+    .user-info strong { display: block; color: #f1f5f9; font-size: 12px; margin-bottom: 2px; }
+    .user-info span { color: #94a3b8; }
+    .role-badge { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 100px; font-size: 10px; font-weight: 600; }
+    .role-badge.admin { background: #7c3aed33; color: #c4b5fd; }
+    .role-badge.member { background: #2563eb22; color: #93c5fd; }
+    .nav-item-logout { color: #f87171 !important; margin-top: 4px; }
+    .nav-item-logout:hover { background: #450a0a !important; color: #fecaca !important; }
+    .users-table-wrap { overflow-x: auto; }
+    .status-active { color: #059669; font-weight: 600; }
+    .status-suspended { color: #dc2626; font-weight: 600; }
+    #app-root[hidden] { display: none !important; }
+    @media (max-width: 1200px) {
+      .summary-grid { grid-template-columns: repeat(2, 1fr); }
+      .overview-panels, .input-layout { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 900px) {
+      .app { flex-direction: column; }
+      .sidebar { width: 100%; min-width: unset; }
+      .sidebar-nav { flex-direction: row; flex-wrap: wrap; }
+      .nav-section-label { width: 100%; }
+      .sidebar-footer { display: none; }
+      .okr-cards { grid-template-columns: 1fr; }
+      .kpi-table-wrap { overflow-x: auto; }
+      .kr-form-row { grid-template-columns: 1fr; gap: 6px; padding: 12px; background: var(--bg); border-radius: var(--radius-sm); }
+      .kr-form-row-extended { grid-template-columns: 1fr; }
+      .kr-form-row-extended .kr-note-input { grid-column: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div id="auth-screen" class="auth-screen"></div>
+  <div class="app" id="app-root" hidden>
+    <aside class="sidebar" id="sidebar"></aside>
+    <main class="main">
+      <header class="header-bar" id="header"></header>
+      <div class="nav-loading-bar" id="nav-loading" aria-hidden="true"></div>
+      <div class="content" id="content"></div>
+    </main>
+  </div>
+  <script>
+(function () {
+  const STORAGE_KEY = 'innovation-office-dashboard-html';
+  const LOCAL_BACKUP_KEY = 'innovation-office-dashboard-backup';
+
+  let supabaseClient = null;
+  let authUser = null;
+  let userProfile = null;
+  let authView = 'login'; // login | forgot | reset | bootstrap
+  let authMsg = null;
+  let needsBootstrap = false;
+  let allProfiles = [];
+  let syncStatus = 'loading'; // loading | synced | error | offline
+  let syncErrorMsg = '';
+  let isSaving = false;
+  const YEAR = 2026;
+  const STATUS_LABELS = { 'on-track': '정상', 'at-risk': '주의', behind: '지연', completed: '달성' };
+  const STATUS_COLORS = { 'on-track': '#2563eb', 'at-risk': '#d97706', behind: '#dc2626', completed: '#059669' };
+  const QUARTER_LABELS = { Q1: '1분기 (1~3월)', Q2: '2분기 (4~6월)', Q3: '3분기 (7~9월)', Q4: '4분기 (10~12월)' };
+
+  const DEPARTMENTS = [
+    { id: 'talent-management', name: '인재관리팀', shortName: '인재관리' },
+    { id: 'digital-ld', name: '디지털L&D센터', shortName: '디지털L&D' },
+    { id: 'ops-support', name: '운영지원팀', shortName: '운영지원' },
+    { id: 'communication', name: '커뮤니케이션팀', shortName: '커뮤니케이션' },
+    { id: 'operations', name: '오퍼레이션팀', shortName: '오퍼레이션' },
+  ];
+
+  const TEAM_IDS = DEPARTMENTS.map(d => d.id);
+
+  const INITIAL_DATA = {"kpis":[{"id":"kpi-tm-1","departmentId":"talent-management","year":2026,"name":"핵심인재 리텐션율","description":"핵심인재 이탈 방지 목표 달성률","target":95,"actual":93,"unit":"%","weight":35,"status":"on-track","owner":"팀장","updatedAt":"2026-03-12"},{"id":"kpi-tm-2","departmentId":"talent-management","year":2026,"name":"승진 후보자 풀 확보율","description":"핵심 직무 승진 후보자 풀 충원률","target":100,"actual":72,"unit":"%","weight":30,"status":"at-risk","owner":"팀장","updatedAt":"2026-03-08"},{"id":"kpi-tm-3","departmentId":"talent-management","year":2026,"name":"인재평가 완료율","description":"연간 인재평가 프로세스 완료 비율","target":100,"actual":45,"unit":"%","weight":35,"status":"on-track","owner":"팀장","updatedAt":"2026-03-01"},{"id":"kpi-ld-1","departmentId":"digital-ld","year":2026,"name":"LMS 콘텐츠 활용률","description":"전사 LMS 학습 콘텐츠 월간 활용률","target":75,"actual":68,"unit":"%","weight":30,"status":"on-track","owner":"센터장","updatedAt":"2026-03-14"},{"id":"kpi-ld-2","departmentId":"digital-ld","year":2026,"name":"디지털 과정 이수율","description":"필수 디지털 학습 과정 이수 완료율","target":90,"actual":82,"unit":"%","weight":35,"status":"on-track","owner":"센터장","updatedAt":"2026-03-11"},{"id":"kpi-ld-3","departmentId":"digital-ld","year":2026,"name":"신규 콘텐츠 제작 건수","description":"연간 신규 디지털 학습 콘텐츠 제작","target":48,"actual":14,"unit":"건","weight":20,"status":"on-track","owner":"센터장","updatedAt":"2026-03-05"},{"id":"kpi-ld-4","departmentId":"digital-ld","year":2026,"name":"학습 만족도","description":"디지털 학습 프로그램 종합 만족도","target":4.3,"actual":4.1,"unit":"점","weight":15,"status":"on-track","owner":"센터장","updatedAt":"2026-02-20"},{"id":"kpi-os-1","departmentId":"ops-support","year":2026,"name":"HR 프로세스 자동화율","description":"주요 HR 업무 프로세스 자동화 달성률","target":80,"actual":55,"unit":"%","weight":40,"status":"on-track","owner":"팀장","updatedAt":"2026-03-13"},{"id":"kpi-os-2","departmentId":"ops-support","year":2026,"name":"서비스 SLA 준수율","description":"내부 HR 서비스 SLA 준수 비율","target":98,"actual":96,"unit":"%","weight":35,"status":"on-track","owner":"팀장","updatedAt":"2026-03-10"},{"id":"kpi-os-3","departmentId":"ops-support","year":2026,"name":"운영비 절감률","description":"전년 대비 HR 운영비 절감 목표","target":15,"actual":8,"unit":"%","weight":25,"status":"at-risk","owner":"팀장","updatedAt":"2026-03-01"},{"id":"kpi-cm-1","departmentId":"communication","year":2026,"name":"내부 커뮤니케이션 도달률","description":"핵심 메시지 전사 도달률","target":95,"actual":88,"unit":"%","weight":35,"status":"on-track","owner":"팀장","updatedAt":"2026-03-12"},{"id":"kpi-cm-2","departmentId":"communication","year":2026,"name":"채널 참여율","description":"사내 커뮤니케이션 채널 월간 참여율","target":60,"actual":52,"unit":"%","weight":30,"status":"at-risk","owner":"팀장","updatedAt":"2026-03-08"},{"id":"kpi-cm-3","departmentId":"communication","year":2026,"name":"브랜드 인지도 점수","description":"사내 HR 브랜드 인지도 조사 점수","target":80,"actual":74,"unit":"점","weight":35,"status":"on-track","owner":"팀장","updatedAt":"2026-02-25"},{"id":"kpi-op-1","departmentId":"operations","year":2026,"name":"업무 처리 리드타임","description":"표준 업무 평균 처리 시간 단축률","target":30,"actual":18,"unit":"%","weight":35,"status":"on-track","owner":"팀장","updatedAt":"2026-03-14"},{"id":"kpi-op-2","departmentId":"operations","year":2026,"name":"오류율","description":"운영 업무 오류 발생률 (낮을수록 좋음)","target":2,"actual":2.8,"unit":"%","weight":30,"status":"behind","owner":"팀장","updatedAt":"2026-03-11"},{"id":"kpi-op-3","departmentId":"operations","year":2026,"name":"고객(내부) 만족도","description":"내부 고객 서비스 만족도","target":4.5,"actual":4.3,"unit":"점","weight":35,"status":"on-track","owner":"팀장","updatedAt":"2026-03-05"}],"okrs":[{"id":"okr-tm-q1","departmentId":"talent-management","year":2026,"quarter":"Q1","objective":"핵심인재 파이프라인을 강화하여 조직 역량 기반을 확립한다","keyResults":[{"id":"kr-tm-1","title":"핵심 직무별 승진 후보자 3명 이상 확보","target":12,"actual":8,"unit":"명"},{"id":"kr-tm-2","title":"인재평가 1차 라운드 100% 완료","target":100,"actual":45,"unit":"%"},{"id":"kr-tm-3","title":"핵심인재 1:1 멘토링 세션 실시","target":50,"actual":38,"unit":"회"}],"owner":"인재관리팀","updatedAt":"2026-03-15"},{"id":"okr-ld-q1","departmentId":"digital-ld","year":2026,"quarter":"Q1","objective":"디지털 학습 인프라를 고도화하여 학습 접근성을 극대화한다","keyResults":[{"id":"kr-ld-1","title":"모바일 LMS 접속률 70% 달성","target":70,"actual":62,"unit":"%"},{"id":"kr-ld-2","title":"신규 마이크로러닝 콘텐츠 12건 제작","target":12,"actual":9,"unit":"건"},{"id":"kr-ld-3","title":"AI 기반 추천 학습 도입 POC 완료","target":1,"actual":1,"unit":"건"}],"owner":"디지털L&D센터","updatedAt":"2026-03-14"},{"id":"okr-os-q1","departmentId":"ops-support","year":2026,"quarter":"Q1","objective":"HR 운영 프로세스 자동화 1단계를 완료한다","keyResults":[{"id":"kr-os-1","title":"채용 프로세스 자동화 3개 업무 적용","target":3,"actual":2,"unit":"건"},{"id":"kr-os-2","title":"RPA 도입으로 월 200시간 업무 절감","target":200,"actual":120,"unit":"시간"},{"id":"kr-os-3","title":"운영 매뉴얼 디지털화 80% 완료","target":80,"actual":65,"unit":"%"}],"owner":"운영지원팀","updatedAt":"2026-03-13"},{"id":"okr-cm-q1","departmentId":"communication","year":2026,"quarter":"Q1","objective":"전사 HR 메시지 일관성과 도달률을 높인다","keyResults":[{"id":"kr-cm-1","title":"월간 HR 뉴스레터 구독률 85% 달성","target":85,"actual":78,"unit":"%"},{"id":"kr-cm-2","title":"사내 SNS 채널 팔로워 5,000명 확보","target":5000,"actual":4200,"unit":"명"},{"id":"kr-cm-3","title":"핵심 캠페인 2건 성공적 런칭","target":2,"actual":2,"unit":"건"}],"owner":"커뮤니케이션팀","updatedAt":"2026-03-12"},{"id":"okr-op-q1","departmentId":"operations","year":2026,"quarter":"Q1","objective":"운영 품질 기반을 구축하여 서비스 안정성을 확보한다","keyResults":[{"id":"kr-op-1","title":"표준 운영 프로세스 10개 문서화","target":10,"actual":8,"unit":"건"},{"id":"kr-op-2","title":"업무 오류율 3% 이하 유지","target":3,"actual":2.8,"unit":"%"},{"id":"kr-op-3","title":"CS 응대 평균 시간 20% 단축","target":20,"actual":15,"unit":"%"}],"owner":"오퍼레이션팀","updatedAt":"2026-03-11"},{"id":"okr-tm-q2","departmentId":"talent-management","year":2026,"quarter":"Q2","objective":"인재평가 결과를 기반으로 육성 프로그램을 본격 가동한다","keyResults":[{"id":"kr-tm-q2-1","title":"고성과자 맞춤형 육성 프로그램 3개 론칭","target":3,"actual":0,"unit":"건"},{"id":"kr-tm-q2-2","title":"리더십 역량 진단 200명 완료","target":200,"actual":0,"unit":"명"},{"id":"kr-tm-q2-3","title":"핵심인재 리텐션 인터뷰 100% 완료","target":100,"actual":0,"unit":"%"}],"owner":"인재관리팀","updatedAt":"2026-04-01"},{"id":"okr-ld-q2","departmentId":"digital-ld","year":2026,"quarter":"Q2","objective":"AI 기반 개인화 학습 경험을 파일럿 운영한다","keyResults":[{"id":"kr-ld-q2-1","title":"AI 추천 학습 파일럿 500명 참여","target":500,"actual":0,"unit":"명"},{"id":"kr-ld-q2-2","title":"라이브 세션 8회 개최","target":8,"actual":0,"unit":"회"},{"id":"kr-ld-q2-3","title":"학습 데이터 대시보드 v1.0 출시","target":1,"actual":0,"unit":"건"}],"owner":"디지털L&D센터","updatedAt":"2026-04-01"}]};
+
+  let chartInstance = null;
+  let messageTimer = null;
+  let saveTimer = null;
+  let renderRaf = null;
+  let pendingNav = false;
+  let excelImporting = false;
+  let sidebarKey = '';
+  let headerKey = '';
+
+  const ui = {
+    tab: 'overview',
+    department: 'all',
+    quarter: 'Q1',
+    inputMode: 'kpi',
+    editingKpiId: null,
+    editingOkrId: null,
+    objectiveDrafts: [],
+    okrMeta: null,
+    message: null,
+    kpiForm: null,
+    kpiEditId: null,
+    kpiEditVal: '',
+    kpiEditProgressRate: '',
+    krEdit: null,
+    okrProgressEdit: null,
+    navHighlight: null,
+    kpiStatusFilter: null,
+  };
+
+  const KR_TARGET_PERCENT = 100;
+
+  function normalizeKr(kr) {
+    let achievement = kr.actual;
+    if (kr.progressRate != null && !Number.isNaN(kr.progressRate)) {
+      achievement = kr.progressRate;
+    } else if (kr.target !== KR_TARGET_PERCENT && kr.target > 0) {
+      achievement = Math.round((kr.actual / kr.target) * 100);
+    }
+    return {
+      ...kr,
+      target: KR_TARGET_PERCENT,
+      unit: '%',
+      actual: achievement,
+      progressNote: kr.progressNote ?? '',
+      progressRate: null,
+    };
+  }
+
+  function migrateState(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    if (!Array.isArray(raw.kpis) || !Array.isArray(raw.okrs)) return null;
+    return {
+      kpis: raw.kpis.filter(k => k.departmentId !== 'innovation-office').map(normalizeKpi),
+      okrs: raw.okrs
+        .filter(o => o.departmentId !== 'innovation-office')
+        .map(o => ({
+        ...o,
+        progressNote: o.progressNote ?? '',
+        progressRate: o.progressRate ?? null,
+        keyResults: (o.keyResults ?? []).map(normalizeKr),
+      })),
+    };
+  }
+
+  function getInitialData() {
+    return migrateState(JSON.parse(JSON.stringify(INITIAL_DATA)));
+  }
+
+  function loadLocalData() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LOCAL_BACKUP_KEY);
+      if (raw) {
+        const migrated = migrateState(JSON.parse(raw));
+        if (migrated) {
+          if (migrated.kpis.length === 0 && migrated.okrs.length === 0) return getInitialData();
+          return migrated;
+        }
+      }
+    } catch (e) {}
+    return getInitialData();
+  }
+
+  function saveLocalBackup() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      localStorage.setItem(LOCAL_BACKUP_KEY, JSON.stringify(data));
+    } catch (e) {
+      console.error('[Dashboard] 로컬 백업 실패', e);
+    }
+  }
+
+  let data = getInitialData();
+  let reloadTimer = null;
+  let realtimeChannel = null;
+
+  function initSupabase() {
+    const cfg = window.SUPABASE_CONFIG;
+    if (!cfg || !cfg.url || !cfg.anonKey) return false;
+    if (cfg.url.includes('YOUR_') || cfg.anonKey.includes('YOUR_')) return false;
+    if (typeof supabase === 'undefined' || !supabase.createClient) return false;
+    supabaseClient = supabase.createClient(cfg.url, cfg.anonKey, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+    });
+    return true;
+  }
+
+  function isAdmin() { return userProfile?.role === 'admin'; }
+
+  function profileFromRow(row) {
+    if (!row) return null;
+    return {
+      id: row.id,
+      email: row.email,
+      displayName: row.display_name || '',
+      role: row.role,
+      status: row.status,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  function showApp(show) {
+    const app = document.getElementById('app-root');
+    const auth = document.getElementById('auth-screen');
+    if (app) app.hidden = !show;
+    if (auth) auth.hidden = show;
+  }
+
+  function authErrorText(err) {
+    const msg = err?.message || String(err || '오류');
+    if (msg.includes('Invalid login credentials')) return '이메일 또는 비밀번호가 올바르지 않습니다.';
+    if (msg.includes('Email not confirmed')) return '이메일 인증이 필요합니다. Supabase에서 이메일 확인을 끄거나 메일을 확인하세요.';
+    return msg;
+  }
+
+  async function loadProfile(userId) {
+    const { data, error } = await supabaseClient.from('profiles').select('*').eq('id', userId).maybeSingle();
+    if (error) throw error;
+    return profileFromRow(data);
+  }
+
+  async function checkNeedsBootstrap() {
+    const { data, error } = await supabaseClient.rpc('needs_bootstrap');
+    if (error) return false;
+    return !!data;
+  }
+
+  async function fetchAllProfiles() {
+    if (!isAdmin()) return [];
+    const { data, error } = await supabaseClient.from('profiles').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(profileFromRow);
+  }
+
+  function renderAuthScreen() {
+    const el = document.getElementById('auth-screen');
+    if (!el) return;
+    const msgHtml = authMsg ? `<div class="form-message ${authMsg.type}">${esc(authMsg.text)}</div>` : '';
+
+    if (authView === 'offline') {
+      el.innerHTML = `<div class="auth-card"><h1>연결 설정 필요</h1><p class="auth-desc">supabase-config.js 를 설정한 뒤 다시 접속해 주세요.</p></div>`;
+      el.hidden = false;
+      return;
+    }
+
+    if (authView === 'reset') {
+      el.innerHTML = `<div class="auth-card"><h1>새 비밀번호 설정</h1><p class="auth-desc">새 비밀번호를 입력해 주세요.</p>${msgHtml}
+        <form id="reset-form">
+          <div class="auth-field"><label>새 비밀번호</label><input type="password" id="reset-password" minlength="6" required placeholder="6자 이상"></div>
+          <div class="auth-field"><label>비밀번호 확인</label><input type="password" id="reset-password2" minlength="6" required></div>
+          <div class="auth-actions"><button type="submit" class="btn-primary">비밀번호 변경</button></div>
+        </form></div>`;
+      el.hidden = false;
+      return;
+    }
+
+    if (authView === 'bootstrap' || needsBootstrap) {
+      el.innerHTML = `<div class="auth-card"><h1>최초 관리자 설정</h1><p class="auth-desc">첫 접속입니다. 관리자 계정을 만들면 팀원 계정도 추가할 수 있습니다.</p>${msgHtml}
+        <form id="bootstrap-form">
+          <div class="auth-field"><label>이름</label><input type="text" id="bootstrap-name" required placeholder="홍길동"></div>
+          <div class="auth-field"><label>이메일</label><input type="email" id="bootstrap-email" required placeholder="admin@company.com"></div>
+          <div class="auth-field"><label>비밀번호</label><input type="password" id="bootstrap-password" minlength="6" required placeholder="6자 이상"></div>
+          <div class="auth-actions"><button type="submit" class="btn-primary">관리자 계정 만들기</button></div>
+        </form></div>`;
+      el.hidden = false;
+      return;
+    }
+
+    if (authView === 'forgot') {
+      el.innerHTML = `<div class="auth-card"><h1>비밀번호 찾기</h1><p class="auth-desc">가입한 이메일로 재설정 링크를 보내드립니다.</p>${msgHtml}
+        <form id="forgot-form">
+          <div class="auth-field"><label>이메일</label><input type="email" id="forgot-email" required placeholder="email@company.com"></div>
+          <div class="auth-actions"><button type="submit" class="btn-primary">재설정 메일 보내기</button></div>
+        </form>
+        <button type="button" class="auth-link" data-auth-action="show-login">← 로그인으로 돌아가기</button></div>`;
+      el.hidden = false;
+      return;
+    }
+
+    el.innerHTML = `<div class="auth-card"><h1>KPI · OKR 대시보드</h1><p class="auth-desc">로그인 후 대시보드를 이용할 수 있습니다.</p>${msgHtml}
+      <form id="login-form">
+        <div class="auth-field"><label>이메일</label><input type="email" id="login-email" required placeholder="email@company.com" autocomplete="username"></div>
+        <div class="auth-field"><label>비밀번호</label><input type="password" id="login-password" required placeholder="비밀번호" autocomplete="current-password"></div>
+        <div class="auth-actions"><button type="submit" class="btn-primary">로그인</button></div>
+      </form>
+      <button type="button" class="auth-link" data-auth-action="show-forgot">비밀번호를 잊으셨나요?</button></div>`;
+    el.hidden = false;
+  }
+
+  async function handleLogin(e) {
+    e.preventDefault();
+    authMsg = null;
+    const email = document.getElementById('login-email')?.value.trim();
+    const password = document.getElementById('login-password')?.value;
+    const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    if (error) { authMsg = { type: 'error', text: authErrorText(error) }; renderAuthScreen(); }
+  }
+
+  async function handleForgot(e) {
+    e.preventDefault();
+    authMsg = null;
+    const email = document.getElementById('forgot-email')?.value.trim();
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.href.split('#')[0],
+    });
+    if (error) { authMsg = { type: 'error', text: authErrorText(error) }; }
+    else { authMsg = { type: 'success', text: '비밀번호 재설정 메일을 보냈습니다. 메일함을 확인해 주세요.' }; }
+    renderAuthScreen();
+  }
+
+  async function handleBootstrap(e) {
+    e.preventDefault();
+    authMsg = null;
+    const displayName = document.getElementById('bootstrap-name')?.value.trim();
+    const email = document.getElementById('bootstrap-email')?.value.trim();
+    const password = document.getElementById('bootstrap-password')?.value;
+    const { error } = await supabaseClient.auth.signUp({
+      email, password,
+      options: { data: { display_name: displayName } },
+    });
+    if (error) { authMsg = { type: 'error', text: authErrorText(error) }; renderAuthScreen(); return; }
+    await new Promise(r => setTimeout(r, 600));
+    const { error: rpcErr } = await supabaseClient.rpc('promote_first_admin');
+    if (rpcErr) { authMsg = { type: 'error', text: authErrorText(rpcErr) }; renderAuthScreen(); return; }
+    needsBootstrap = false;
+    authMsg = { type: 'success', text: '관리자 계정이 생성되었습니다. 로그인 중…' };
+    renderAuthScreen();
+  }
+
+  async function handleResetPassword(e) {
+    e.preventDefault();
+    authMsg = null;
+    const p1 = document.getElementById('reset-password')?.value;
+    const p2 = document.getElementById('reset-password2')?.value;
+    if (p1 !== p2) { authMsg = { type: 'error', text: '비밀번호가 일치하지 않습니다.' }; renderAuthScreen(); return; }
+    if ((p1 || '').length < 6) { authMsg = { type: 'error', text: '비밀번호는 6자 이상이어야 합니다.' }; renderAuthScreen(); return; }
+    const { error } = await supabaseClient.auth.updateUser({ password: p1 });
+    if (error) { authMsg = { type: 'error', text: authErrorText(error) }; renderAuthScreen(); return; }
+    authView = 'login';
+    authMsg = { type: 'success', text: '비밀번호가 변경되었습니다. 새 비밀번호로 로그인해 주세요.' };
+    await supabaseClient.auth.signOut();
+    renderAuthScreen();
+  }
+
+  async function handleLogout() {
+    teardownRealtime();
+    await supabaseClient.auth.signOut();
+    authUser = null;
+    userProfile = null;
+    authView = 'login';
+    authMsg = null;
+    showApp(false);
+    renderAuthScreen();
+  }
+
+  function teardownRealtime() {
+    if (realtimeChannel && supabaseClient) {
+      supabaseClient.removeChannel(realtimeChannel);
+      realtimeChannel = null;
+    }
+  }
+
+  async function onAuthSession(session, event) {
+    if (event === 'PASSWORD_RECOVERY') {
+      authView = 'reset';
+      showApp(false);
+      renderAuthScreen();
+      return;
+    }
+    if (session?.user) {
+      try {
+        let profile = await loadProfile(session.user.id);
+        if (!profile) {
+          await new Promise(r => setTimeout(r, 400));
+          profile = await loadProfile(session.user.id);
+        }
+        if (profile?.status === 'suspended') {
+          await supabaseClient.auth.signOut();
+          authUser = null;
+          userProfile = null;
+          authView = 'login';
+          authMsg = { type: 'error', text: '정지된 계정입니다. 관리자에게 문의하세요.' };
+          showApp(false);
+          renderAuthScreen();
+          return;
+        }
+        authUser = session.user;
+        userProfile = profile;
+        if (isAdmin()) allProfiles = await fetchAllProfiles();
+        showApp(true);
+        await bootstrap();
+        requestRender();
+      } catch (err) {
+        console.error(err);
+        authMsg = { type: 'error', text: '프로필 로드 실패: ' + authErrorText(err) };
+        showApp(false);
+        renderAuthScreen();
+      }
+    } else {
+      authUser = null;
+      userProfile = null;
+      allProfiles = [];
+      teardownRealtime();
+      try { needsBootstrap = await checkNeedsBootstrap(); } catch (e) { needsBootstrap = false; }
+      authView = needsBootstrap ? 'bootstrap' : 'login';
+      showApp(false);
+      renderAuthScreen();
+    }
+  }
+
+  async function initAuth() {
+    renderAuthScreen();
+    if (!initSupabase()) {
+      authView = 'offline';
+      renderAuthScreen();
+      return;
+    }
+    supabaseClient.auth.onAuthStateChange((event, session) => {
+      onAuthSession(session, event);
+    });
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session) {
+      needsBootstrap = await checkNeedsBootstrap();
+      authView = needsBootstrap ? 'bootstrap' : 'login';
+      showApp(false);
+      renderAuthScreen();
+    }
+  }
+
+  function kpiToRow(k) {
+    return {
+      id: k.id,
+      department_id: k.departmentId,
+      year: k.year,
+      name: k.name,
+      description: k.description || '',
+      target: String(k.target ?? ''),
+      actual: String(k.actual ?? ''),
+      unit: k.unit || '',
+      weight: k.weight,
+      status: k.status,
+      owner: k.owner || '',
+      value_type: getKpiValueType(k),
+      progress_rate: k.progressRate ?? null,
+      updated_at: k.updatedAt || today(),
+    };
+  }
+
+  function kpiFromRow(row) {
+    return normalizeKpi({
+      id: row.id,
+      departmentId: row.department_id,
+      year: row.year,
+      name: row.name,
+      description: row.description,
+      target: row.target,
+      actual: row.actual,
+      unit: row.unit,
+      weight: Number(row.weight),
+      status: row.status,
+      owner: row.owner,
+      valueType: row.value_type,
+      progressRate: row.progress_rate != null ? Number(row.progress_rate) : null,
+      updatedAt: row.updated_at,
+    });
+  }
+
+  function okrToRow(o) {
+    return {
+      id: o.id,
+      department_id: o.departmentId,
+      year: o.year,
+      quarter: o.quarter,
+      objective: o.objective,
+      owner: o.owner || '',
+      progress_note: o.progressNote || '',
+      progress_rate: o.progressRate ?? null,
+      key_results: o.keyResults || [],
+      updated_at: o.updatedAt || today(),
+    };
+  }
+
+  function okrFromRow(row) {
+    return {
+      id: row.id,
+      departmentId: row.department_id,
+      year: row.year,
+      quarter: row.quarter,
+      objective: row.objective,
+      owner: row.owner,
+      progressNote: row.progress_note || '',
+      progressRate: row.progress_rate != null ? Number(row.progress_rate) : null,
+      keyResults: row.key_results || [],
+      updatedAt: row.updated_at,
+    };
+  }
+
+  async function loadFromSupabase() {
+    const [kpiRes, okrRes] = await Promise.all([
+      supabaseClient.from('kpis').select('*'),
+      supabaseClient.from('okrs').select('*'),
+    ]);
+    if (kpiRes.error) throw kpiRes.error;
+    if (okrRes.error) throw okrRes.error;
+    return migrateState({
+      kpis: (kpiRes.data || []).map(kpiFromRow),
+      okrs: (okrRes.data || []).map(o => ({
+        ...okrFromRow(o),
+        keyResults: (o.key_results || []).map(normalizeKr),
+      })),
+    });
+  }
+
+  async function saveToSupabase() {
+    if (!supabaseClient) return;
+    isSaving = true;
+    setSyncStatus('loading');
+    try {
+      const kpiRows = data.kpis.map(kpiToRow);
+      const okrRows = data.okrs.map(okrToRow);
+      const kpiIds = data.kpis.map(k => k.id);
+      const okrIds = data.okrs.map(o => o.id);
+
+      if (kpiRows.length) {
+        const { error } = await supabaseClient.from('kpis').upsert(kpiRows, { onConflict: 'id' });
+        if (error) throw error;
+      }
+      if (okrRows.length) {
+        const { error } = await supabaseClient.from('okrs').upsert(okrRows, { onConflict: 'id' });
+        if (error) throw error;
+      }
+
+      const { data: dbKpis } = await supabaseClient.from('kpis').select('id');
+      const { data: dbOkrs } = await supabaseClient.from('okrs').select('id');
+      const kpiToDelete = (dbKpis || []).map(r => r.id).filter(id => !kpiIds.includes(id));
+      const okrToDelete = (dbOkrs || []).map(r => r.id).filter(id => !okrIds.includes(id));
+      if (kpiToDelete.length) {
+        const { error } = await supabaseClient.from('kpis').delete().in('id', kpiToDelete);
+        if (error) throw error;
+      }
+      if (okrToDelete.length) {
+        const { error } = await supabaseClient.from('okrs').delete().in('id', okrToDelete);
+        if (error) throw error;
+      }
+    } finally {
+      isSaving = false;
+    }
+  }
+
+  function syncBadgeHtml() {
+    const labels = { loading: '동기화 중…', synced: 'Supabase 연결됨', error: '동기화 오류', offline: '오프라인 (로컬)' };
+    const title = syncStatus === 'error' && syncErrorMsg ? ` title="${esc(syncErrorMsg)}"` : '';
+    return `<span class="sync-badge ${syncStatus}"${title}><span class="sync-dot"></span>${labels[syncStatus] || syncStatus}</span>`;
+  }
+
+  function setSyncStatus(status) {
+    syncStatus = status;
+    const el = document.querySelector('.sync-badge');
+    if (el) el.outerHTML = syncBadgeHtml();
+  }
+
+  function setupRealtime() {
+    if (!supabaseClient || realtimeChannel) return;
+    realtimeChannel = supabaseClient
+      .channel('dashboard-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'kpis' }, scheduleRemoteReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'okrs' }, scheduleRemoteReload)
+      .subscribe();
+  }
+
+  function scheduleRemoteReload() {
+    if (isSaving) return;
+    clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(async () => {
+      try {
+        const remote = await loadFromSupabase();
+        if (remote) {
+          data = remote;
+          saveLocalBackup();
+          setSyncStatus('synced');
+          requestRender();
+        }
+      } catch (e) {
+        console.error('[Dashboard] 원격 새로고침 실패', e);
+      }
+    }, 600);
+  }
+
+  function saveData() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(async () => {
+      saveLocalBackup();
+      if (!supabaseClient) return;
+      try {
+        await saveToSupabase();
+        setSyncStatus('synced');
+        syncErrorMsg = '';
+      } catch (e) {
+        console.error('[Dashboard] Supabase 저장 실패', e);
+        syncStatus = 'error';
+        syncErrorMsg = e.message || '저장 실패';
+        setSyncStatus('error');
+      }
+    }, 400);
+  }
+
+  async function bootstrap() {
+    if (!supabaseClient || !authUser) return;
+    syncStatus = 'loading';
+    requestRender();
+
+    try {
+      const remote = await loadFromSupabase();
+      if (remote && (remote.kpis.length || remote.okrs.length)) {
+        data = remote;
+      } else {
+        const local = loadLocalData();
+        data = (local.kpis.length || local.okrs.length) ? local : getInitialData();
+        await saveToSupabase();
+      }
+      saveLocalBackup();
+      syncStatus = 'synced';
+      setupRealtime();
+    } catch (e) {
+      console.error('[Dashboard] Supabase 로드 실패', e);
+      syncStatus = 'error';
+      syncErrorMsg = e.message || '연결 실패';
+      data = loadLocalData();
+    }
+    requestRender();
+  }
+
+  function esc(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function dept(id) { return DEPARTMENTS.find(d => d.id === id); }
+  function today() { return new Date().toISOString().slice(0, 10); }
+  function uid() {
+    try {
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+      }
+    } catch (e) {}
+    return 'id-' + Date.now() + '-' + Math.random().toString(36).slice(2, 9);
+  }
+
+  function calcProgress(actual, target) {
+    if (!target) return 0;
+    return Math.min(Math.round((actual / target) * 100), 150);
+  }
+
+  const KPI_VALUE_TYPE_LABELS = { number: '숫자', percent: '비율(%)', text: '텍스트' };
+
+  function getKpiValueType(k) {
+    if (k.valueType) return k.valueType;
+    if (k.unit === '%') return 'percent';
+    return 'number';
+  }
+
+  function parseNumericKpiValue(value) {
+    if (typeof value === 'number') return Number.isNaN(value) ? null : value;
+    const trimmed = String(value ?? '').trim();
+    if (!trimmed) return null;
+    const n = parseFloat(trimmed);
+    return Number.isNaN(n) ? null : n;
+  }
+
+  function formatKpiValue(k, field) {
+    const val = k[field];
+    const type = getKpiValueType(k);
+    if (type === 'text') return String(val ?? '');
+    if (type === 'percent') return `${val}%`;
+    return `${val}${k.unit || ''}`;
+  }
+
+  function buildKpiFieldValues(valueType, targetStr, actualStr, unit) {
+    if (valueType === 'text') {
+      if (!String(targetStr).trim()) return { error: '목표(텍스트)를 입력해 주세요.' };
+      return { target: String(targetStr).trim(), actual: String(actualStr).trim(), unit: '' };
+    }
+    const target = parseFloat(targetStr);
+    if (Number.isNaN(target)) {
+      return { error: valueType === 'percent' ? '목표 비율을 숫자로 입력해 주세요.' : '목표값을 숫자로 입력해 주세요.' };
+    }
+    const actual = parseFloat(actualStr);
+    return { target, actual: Number.isNaN(actual) ? 0 : actual, unit: valueType === 'percent' ? '%' : String(unit || '').trim() };
+  }
+
+  function normalizeKpi(kpi) {
+    const valueType = getKpiValueType(kpi);
+    if (valueType === 'text') {
+      return { ...kpi, valueType, target: String(kpi.target ?? ''), actual: String(kpi.actual ?? ''), unit: '', progressRate: kpi.progressRate ?? null };
+    }
+    return {
+      ...kpi,
+      valueType,
+      target: parseNumericKpiValue(kpi.target) ?? 0,
+      actual: parseNumericKpiValue(kpi.actual) ?? 0,
+      unit: valueType === 'percent' ? '%' : (kpi.unit ?? ''),
+      progressRate: kpi.progressRate ?? null,
+    };
+  }
+
+  function calcKpiProgress(k) {
+    if (k.progressRate != null && typeof k.progressRate === 'number' && !Number.isNaN(k.progressRate)) {
+      return Math.min(Math.max(Math.round(k.progressRate), 0), 150);
+    }
+    const type = getKpiValueType(k);
+    if (type === 'text') return 0;
+    const target = parseNumericKpiValue(k.target);
+    const actual = parseNumericKpiValue(k.actual);
+    if (target === null || actual === null) return 0;
+    return calcProgress(actual, target);
+  }
+
+  function calcKrProgress(kr) {
+    if (kr.unit === '%' && kr.target === KR_TARGET_PERCENT) {
+      return Math.min(Math.max(Math.round(kr.actual), 0), 150);
+    }
+    if (kr.progressRate != null && typeof kr.progressRate === 'number' && !Number.isNaN(kr.progressRate)) {
+      return Math.min(Math.max(Math.round(kr.progressRate), 0), 150);
+    }
+    return calcProgress(kr.actual, kr.target);
+  }
+
+  function calcOkrProgress(o) {
+    if (o.progressRate != null && typeof o.progressRate === 'number' && !Number.isNaN(o.progressRate)) {
+      return Math.min(Math.max(Math.round(o.progressRate), 0), 150);
+    }
+    if (!o.keyResults.length) return 0;
+    return Math.round(o.keyResults.reduce((s, kr) => s + calcKrProgress(kr), 0) / o.keyResults.length);
+  }
+
+  function calcWeightedKpiScore(kpis) {
+    const tw = kpis.reduce((s, k) => s + k.weight, 0);
+    if (!tw) return 0;
+    return Math.round(kpis.reduce((s, k) => s + calcKpiProgress(k) * k.weight, 0) / tw);
+  }
+
+  function calcAvgOkrProgress(okrs) {
+    if (!okrs.length) return 0;
+    return Math.round(okrs.reduce((s, o) => s + calcOkrProgress(o), 0) / okrs.length);
+  }
+
+  function progressBar(value, color) {
+    const v = Math.min(Math.max(value, 0), 100);
+    return `<div class="progress-bar-wrap"><div class="progress-bar-track"><div class="progress-bar-fill" style="width:${v}%;background:${color}"></div></div><span class="progress-bar-label">${value}%</span></div>`;
+  }
+
+  function statusBadge(status) {
+    const c = STATUS_COLORS[status] || '#64748b';
+    return `<span class="status-badge" style="color:${c};background:${c}14;border-color:${c}33">${STATUS_LABELS[status] || status}</span>`;
+  }
+
+  function filterKpis() {
+    return data.kpis.filter(k => k.year === YEAR && (ui.department === 'all' || k.departmentId === ui.department));
+  }
+
+  function filterOkrs() {
+    return data.okrs.filter(o => o.year === YEAR && o.quarter === ui.quarter && (ui.department === 'all' || o.departmentId === ui.department));
+  }
+
+  function teamKpis() {
+    const ids = ui.department === 'all' ? TEAM_IDS : [ui.department];
+    return data.kpis.filter(k => k.year === YEAR && ids.includes(k.departmentId));
+  }
+
+  function teamOkrs() {
+    const ids = ui.department === 'all' ? TEAM_IDS : [ui.department];
+    return data.okrs.filter(o => o.year === YEAR && o.quarter === ui.quarter && ids.includes(o.departmentId));
+  }
+
+  function renderOrgStructure() {
+    return `<section class="panel org-structure-panel"><h2>조직 구조</h2><p class="panel-desc">부서별 KPI·OKR 현황</p>
+      <ul class="org-tree-children org-tree-flat">${DEPARTMENTS.map(t => `<li class="org-tree-item"><span class="org-node">${esc(t.name)}</span></li>`).join('')}</ul></section>`;
+  }
+
+  function showMsg(type, text) {
+    ui.message = { type, text };
+    requestRender();
+    clearTimeout(messageTimer);
+    messageTimer = setTimeout(() => { ui.message = null; requestRender(); }, 3000);
+  }
+
+  function setNavPending(on) {
+    const bar = document.getElementById('nav-loading');
+    const content = document.getElementById('content');
+    if (bar) bar.style.display = on ? 'block' : 'none';
+    if (content) content.classList.toggle('content-pending', on);
+  }
+
+  function requestRender(opts) {
+    if (opts && opts.nav) pendingNav = true;
+    if (renderRaf) return;
+    renderRaf = requestAnimationFrame(() => {
+      renderRaf = null;
+      doRender();
+    });
+  }
+
+  function doRender() {
+    try {
+      renderSidebar();
+      renderHeader();
+      sidebarKey = ui.tab + '|' + ui.department;
+      headerKey = ui.tab + '|' + ui.quarter;
+      const content = document.getElementById('content');
+      if (ui.tab === 'overview') content.innerHTML = renderOverview();
+      else if (ui.tab === 'kpi') content.innerHTML = renderKpi();
+      else if (ui.tab === 'okr') content.innerHTML = renderOkr();
+      else if (ui.tab === 'users') content.innerHTML = renderUsers();
+      else if (ui.tab === 'account') content.innerHTML = renderAccount();
+      else content.innerHTML = renderInput();
+      if (ui.tab === 'overview') setTimeout(renderChart, 0);
+      if (ui.navHighlight) setTimeout(applyNavHighlight, 80);
+      if (pendingNav) {
+        setNavPending(true);
+        setTimeout(() => { setNavPending(false); pendingNav = false; }, 100);
+      }
+    } catch (err) {
+      console.error(err);
+      const content = document.getElementById('content');
+      if (content) {
+        content.innerHTML = `<div class="form-message error">화면을 불러오지 못했습니다. 브라우저를 새로고침하거나, 개발자 도구(F12) 콘솔의 오류를 확인해 주세요.<br><small>${esc(err.message)}</small></div>`;
+      }
+    }
+  }
+
+  function renderSidebar() {
+    const adminNav = isAdmin()
+      ? `<div class="nav-section-label">관리</div>
+         <button class="nav-item ${ui.tab === 'users' ? 'active' : ''}" data-tab="users">회원 관리</button>`
+      : '';
+    const roleLabel = userProfile?.role === 'admin' ? '관리자' : '회원';
+    document.getElementById('sidebar').innerHTML = `
+      <div class="sidebar-header"><div><h1>KPI · OKR</h1><p>부서 대시보드</p></div></div>
+      <div class="user-info"><strong>${esc(userProfile?.displayName || authUser?.email || '')}</strong><span>${esc(authUser?.email || '')}</span><span class="role-badge ${userProfile?.role || 'member'}">${roleLabel}</span></div>
+      <nav class="sidebar-nav">
+        <button class="nav-item ${ui.department === 'all' && ui.tab !== 'input' && ui.tab !== 'users' && ui.tab !== 'account' ? 'active' : ''}" data-dept="all" data-tab="overview">전체 현황</button>
+        <button class="nav-item nav-item-input ${ui.tab === 'input' ? 'active' : ''}" data-tab="input">데이터 입력</button>
+        ${adminNav}
+        <button class="nav-item ${ui.tab === 'account' ? 'active' : ''}" data-tab="account">내 계정</button>
+        <div class="nav-section-label">부서</div>
+        ${DEPARTMENTS.map(d => `<button class="nav-item ${ui.department === d.id && ui.tab !== 'input' && ui.tab !== 'users' && ui.tab !== 'account' ? 'active' : ''} ${d.isParent ? 'parent' : ''}" data-dept="${d.id}">${esc(d.name)}</button>`).join('')}
+        <button class="nav-item nav-item-logout" data-auth-action="logout">로그아웃</button>
+      </nav>
+      <div class="sidebar-footer"><span>2026년 기준</span><span>KPI 연간 · OKR 분기</span>${syncBadgeHtml()}</div>`;
+  }
+
+  function renderHeader() {
+    const tabs = [
+      { id: 'overview', label: '종합 현황' },
+      { id: 'kpi', label: '연간 핵심관리지표' },
+      { id: 'okr', label: '분기 OKR' },
+      { id: 'input', label: '데이터 입력' },
+    ];
+    const showQuarter = ui.tab !== 'kpi' && ui.tab !== 'input' && ui.tab !== 'users' && ui.tab !== 'account';
+    document.getElementById('header').innerHTML = `
+      <div class="header-tabs">
+        ${tabs.map(t => `<button class="header-tab ${ui.tab === t.id ? 'active' : ''}" data-tab="${t.id}">${t.label}</button>`).join('')}
+      </div>
+      <div class="header-controls">
+        <div class="control-group"><label>연도</label><select disabled><option>2026</option></select></div>
+        ${showQuarter ? `<div class="control-group"><label>분기</label><select id="quarter-select">${Object.entries(QUARTER_LABELS).map(([q,l]) => `<option value="${q}" ${ui.quarter===q?'selected':''}>${l}</option>`).join('')}</select></div>` : ''}
+      </div>`;
+  }
+
+  function renderOverview() {
+    const kpis = teamKpis();
+    const okrs = teamOkrs();
+    const kpiScore = calcWeightedKpiScore(kpis);
+    const okrScore = calcAvgOkrProgress(okrs);
+    const completed = kpis.filter(k => k.status === 'completed').length;
+    const atRiskKpis = kpis.filter(k => k.status === 'at-risk' || k.status === 'behind');
+    const atRiskOkrs = okrs.filter(o => calcOkrProgress(o) < 70);
+    const deptIds = ui.department === 'all' ? DEPARTMENTS.map(d => d.id) : [ui.department];
+
+    return `
+      <div class="standalone-note">로그인된 사용자만 접근할 수 있습니다. 데이터는 Supabase 클라우드에 저장되며 팀원과 실시간 공유됩니다.</div>
+      <div class="summary-grid">
+        <div class="summary-card summary-card-clickable" data-nav-tab="kpi" role="button" tabindex="0"><div class="summary-icon" style="color:#2563eb;background:#2563eb12">◎</div><div><p class="summary-label">연간 KPI 달성률</p><p class="summary-value">${kpiScore}%</p><p class="summary-sub">${kpis.length}개 지표 · ${YEAR}년</p></div></div>
+        <div class="summary-card summary-card-clickable" data-nav-tab="okr" role="button" tabindex="0"><div class="summary-icon" style="color:#7c3aed;background:#7c3aed12">↗</div><div><p class="summary-label">${ui.quarter} OKR 진행률</p><p class="summary-value">${okrScore}%</p><p class="summary-sub">${okrs.length}개 목표</p></div></div>
+        <div class="summary-card summary-card-clickable" data-nav-tab="kpi" data-nav-kpi-filter="completed" role="button" tabindex="0"><div class="summary-icon" style="color:#059669;background:#05966912">✓</div><div><p class="summary-label">KPI 달성 완료</p><p class="summary-value">${completed}</p><p class="summary-sub">전체 ${kpis.length}개 중</p></div></div>
+        <div class="summary-card summary-card-clickable" data-nav-scroll="overview-alerts" role="button" tabindex="0"><div class="summary-icon" style="color:#d97706;background:#d9770612">!</div><div><p class="summary-label">주의 필요 항목</p><p class="summary-value">${atRiskKpis.length + atRiskOkrs.length}</p><p class="summary-sub">KPI ${atRiskKpis.length} · OKR ${atRiskOkrs.length}</p></div></div>
+      </div>
+      <div class="overview-panels">
+        <section class="panel overview-panel">
+          <h2>부서별 달성률 비교</h2>
+          <p class="panel-desc">${YEAR}년 KPI(가중 평균) vs ${ui.quarter} OKR(평균 진행률)</p>
+          <div class="overview-panel-body">
+            <div class="overview-chart-wrap"><canvas id="dept-chart"></canvas></div>
+            <div class="chart-legend"><span><i style="background:#2563eb"></i> 연간 KPI</span><span><i style="background:#7c3aed"></i> 분기 OKR</span></div>
+          </div>
+        </section>
+        <section class="panel overview-panel">
+          <h2>부서별 현황</h2>
+          <p class="panel-desc">${YEAR}년 ${ui.quarter} KPI·OKR 부서별 진행률</p>
+          <div class="overview-panel-body dept-status-list">
+          ${deptIds.map(id => {
+            const d = dept(id);
+            const dk = data.kpis.filter(k => k.year === YEAR && k.departmentId === id);
+            const do_ = data.okrs.filter(o => o.year === YEAR && o.quarter === ui.quarter && o.departmentId === id);
+            const ks = calcWeightedKpiScore(dk), os = calcAvgOkrProgress(do_);
+            return `<div class="dept-status-item"><div class="dept-status-header"><span class="dept-name">${esc(d.name)}</span><span class="dept-scores">KPI ${ks}% · OKR ${os}%</span></div>
+              <div class="dept-bars"><div class="dept-bar-row"><span>KPI</span>${progressBar(ks, '#2563eb')}</div><div class="dept-bar-row"><span>OKR</span>${progressBar(os, '#7c3aed')}</div></div></div>`;
+          }).join('')}
+          </div>
+        </section>
+      </div>
+      ${renderOrgStructure()}
+      ${(atRiskKpis.length || atRiskOkrs.length) ? `<section class="panel" id="overview-alerts"><h2>주의 필요 항목</h2><div class="alert-list">
+        ${atRiskKpis.map(k => `<div class="alert-item alert-item-clickable" data-nav-kpi-id="${k.id}" data-nav-dept="${k.departmentId}" role="button" tabindex="0">${statusBadge(k.status)}<div><strong>${esc(k.name)}</strong><div class="meta">${esc(dept(k.departmentId)?.shortName)} · KPI · ${calcKpiProgress(k)}% 달성</div></div></div>`).join('')}
+        ${atRiskOkrs.map(o => `<div class="alert-item alert-item-clickable" data-nav-okr-id="${o.id}" data-nav-dept="${o.departmentId}" role="button" tabindex="0"><span class="status-badge" style="color:#d97706;background:#d9770614;border-color:#d9770633">주의</span><div><strong>${esc(o.objective)}</strong><div class="meta">${esc(dept(o.departmentId)?.shortName)} · OKR · ${calcOkrProgress(o)}% 진행</div></div></div>`).join('')}
+      </div></section>` : ''}`;
+  }
+
+  function renderKpi() {
+    let kpis = filterKpis();
+    if (ui.kpiStatusFilter === 'completed') kpis = kpis.filter(k => k.status === 'completed');
+    const grouped = {};
+    kpis.forEach(k => { (grouped[k.departmentId] = grouped[k.departmentId] || []).push(k); });
+    const filterNote = ui.kpiStatusFilter === 'completed'
+      ? `<div class="standalone-note">달성 완료 KPI만 표시 중입니다. <button type="button" class="btn-text" data-clear-kpi-filter>전체 KPI 보기</button></div>`
+      : '';
+    return `${filterNote}<div class="view-header"><div><h2>연간 핵심관리지표 (KPI)</h2><p>${YEAR}년 연간 목표 · 분기별 실적 업데이트</p></div></div>
+      ${Object.entries(grouped).map(([deptId, list]) => `
+        <section class="dept-kpi-section"><h3>${esc(dept(deptId)?.name)}</h3>
+        <div class="kpi-table-wrap"><table><thead><tr><th>지표명</th><th>유형</th><th>목표</th><th>실적</th><th>달성률</th><th>가중치</th><th>상태</th><th>담당</th><th></th></tr></thead><tbody>
+        ${list.map(k => {
+          const p = calcKpiProgress(k);
+          const editing = ui.kpiEditId === k.id;
+          const type = getKpiValueType(k);
+          const typeLabel = type === 'number' ? '숫자' : type === 'percent' ? '비율' : '텍스트';
+          const actualEdit = editing
+            ? (type === 'text'
+              ? `<div class="kpi-edit-fields"><input class="edit-input" type="text" id="kpi-edit-input" value="${esc(ui.kpiEditVal)}"><input class="edit-input" type="number" step="any" min="0" max="150" id="kpi-edit-progress" placeholder="달성률 %" value="${esc(ui.kpiEditProgressRate)}"></div>`
+              : `<input class="edit-input" type="number" step="any" id="kpi-edit-input" value="${esc(ui.kpiEditVal)}">`)
+            : esc(formatKpiValue(k, 'actual'));
+          const progressCell = (type === 'text' && k.progressRate == null && !editing)
+            ? '<span class="progress-na">—</span>'
+            : progressBar(p, '#2563eb');
+          const hl = ui.navHighlight?.type === 'kpi' && ui.navHighlight.id === k.id ? ' nav-highlight' : '';
+          return `<tr id="kpi-row-${k.id}" class="${hl.trim()}"><td class="kpi-name-cell"><strong>${esc(k.name)}</strong><span>${esc(k.description)}</span></td>
+            <td class="kpi-type-cell">${typeLabel}</td>
+            <td>${esc(formatKpiValue(k, 'target'))}</td>
+            <td>${actualEdit}</td>
+            <td>${progressCell}</td><td>${k.weight}%</td><td>${statusBadge(k.status)}</td><td>${esc(k.owner)}</td>
+            <td>${editing ? `<button class="icon-btn" data-kpi-save="${k.id}">✓</button><button class="icon-btn" data-kpi-cancel>✕</button>` : `<button class="icon-btn" data-kpi-edit="${k.id}">✎</button>`}</td></tr>`;
+        }).join('')}
+        </tbody></table></div></section>`).join('')}`;
+  }
+
+  function renderOkr() {
+    const okrs = filterOkrs();
+    if (!okrs.length) {
+      return `<div class="view-header"><div><h2>분기 OKR</h2><p>${YEAR}년 ${ui.quarter} 목표</p></div></div>
+        <div class="empty-state"><p>선택한 분기에 등록된 OKR이 없습니다.</p><p>데이터 입력 탭에서 Objective와 Key Result를 등록하세요.</p></div>`;
+    }
+    return `<div class="view-header"><div><h2>분기 OKR</h2><p>${YEAR}년 ${ui.quarter} · KR 목표 100% 고정 · 달성율(%) 입력</p></div><div class="view-meta">${okrs.length}개 Objective</div></div>
+      <div class="okr-cards">${okrs.map(o => {
+        const p = calcOkrProgress(o);
+        const isOkrEditing = ui.okrProgressEdit && ui.okrProgressEdit.okrId === o.id;
+        const hl = ui.navHighlight?.type === 'okr' && ui.navHighlight.id === o.id ? ' nav-highlight' : '';
+        return `<article id="okr-card-${o.id}" class="okr-card${hl}"><div class="okr-card-header"><span class="okr-dept-tag">${esc(dept(o.departmentId)?.shortName)}</span><div class="okr-progress-ring">${p}%</div></div>
+          <h3 class="okr-objective">${esc(o.objective)}</h3><div style="margin-bottom:16px">${progressBar(p, '#7c3aed').replace('8px','6px')}</div>
+          <div class="okr-progress-section">
+            <div class="okr-progress-header">
+              <span class="section-label">Objective 진행현황</span>
+              ${isOkrEditing ? `<div class="action-btns inline"><button type="button" class="icon-btn" data-okr-progress-save="${o.id}">✓</button><button type="button" class="icon-btn" data-okr-progress-cancel>✕</button></div>`
+                : `<button type="button" class="kr-edit-btn" data-okr-progress-edit="${o.id}">✎</button>`}
+            </div>
+            ${isOkrEditing ? `<div class="progress-edit-fields">
+              <label>달성률 (%)<input type="number" class="edit-input" placeholder="비우면 KR 평균" id="okr-progress-rate" value="${esc(ui.okrProgressEdit.progressRate)}"></label>
+              <label>진행현황 (텍스트)<textarea rows="2" id="okr-progress-note" placeholder="이번 분기 Objective 진행 상황을 기술하세요">${esc(ui.okrProgressEdit.progressNote)}</textarea></label>
+            </div>` : `<div class="progress-display">${o.progressNote ? `<p class="progress-note-text">${esc(o.progressNote)}</p>` : `<p class="progress-note-empty">진행현황 미입력</p>`}</div>`}
+          </div>
+          <ul class="kr-list">${o.keyResults.map(kr => {
+            const kp = calcKrProgress(kr);
+            const isEditing = ui.krEdit && ui.krEdit.okrId === o.id && ui.krEdit.krId === kr.id;
+            return `<li class="kr-item"><div class="kr-header"><span class="kr-title">${esc(kr.title)}</span><span class="kr-progress-pct">${kp}%</span></div>
+              <div class="progress-bar-wrap"><div class="progress-bar-track" style="height:4px"><div class="progress-bar-fill" style="width:${Math.min(kp,100)}%;background:#7c3aed;height:4px"></div></div></div>
+              ${isEditing ? `<div class="progress-edit-fields kr-edit-fields">
+                <div class="kr-metrics-row">
+                  <span class="kr-target-label">목표: ${KR_TARGET_PERCENT}%</span>
+                  <label>달성율 (%)<input type="number" step="any" min="0" max="150" class="edit-input small" id="kr-edit-rate" value="${esc(ui.krEdit.achievementRate)}"></label>
+                </div>
+                <label>진행현황 (텍스트)<textarea rows="2" id="kr-edit-note" placeholder="KR별 진행 상황">${esc(ui.krEdit.progressNote)}</textarea></label>
+                <div class="action-btns"><button type="button" class="icon-btn" data-kr-save="${o.id}:${kr.id}">✓</button><button type="button" class="icon-btn" data-kr-cancel>✕</button></div>
+              </div>` : `<div class="kr-metrics"><span>목표: <strong>${KR_TARGET_PERCENT}%</strong></span><span>달성율: <strong>${kp}%</strong></span>
+                <button type="button" class="kr-edit-btn" data-kr-edit="${o.id}:${kr.id}">✎</button></div>
+                ${kr.progressNote ? `<p class="progress-note-text kr-note">${esc(kr.progressNote)}</p>` : ''}`}
+            </li>`;
+          }).join('')}</ul>
+          <footer class="okr-footer"><span>담당: ${esc(o.owner)}</span><span>최종 업데이트: ${o.updatedAt}</span></footer></article>`;
+      }).join('')}</div>`;
+  }
+
+  function renderKpiFormFields(kpiForm) {
+    const vt = kpiForm.valueType || 'number';
+    const typeSelect = `<div class="form-field"><label>목표·실적 유형</label><select name="valueType">${Object.entries(KPI_VALUE_TYPE_LABELS).map(([k, label]) => `<option value="${k}" ${vt === k ? 'selected' : ''}>${label}</option>`).join('')}</select></div>`;
+    if (vt === 'text') {
+      return typeSelect + `
+        <div class="form-field full"><label>연간 목표 (텍스트) *</label><input name="target" value="${esc(kpiForm.target)}" placeholder="예: A등급 달성"></div>
+        <div class="form-field full"><label>현재 실적 (텍스트)</label><input name="actual" value="${esc(kpiForm.actual)}" placeholder="예: B등급 진행 중"></div>
+        <div class="form-field"><label>달성률 (%)</label><input name="progressRate" type="number" step="any" min="0" max="150" value="${esc(kpiForm.progressRate)}" placeholder="텍스트 지표용"></div>`;
+    }
+    const unitField = vt === 'number'
+      ? `<div class="form-field"><label>단위</label><input name="unit" value="${esc(kpiForm.unit)}" placeholder="건, 명, 점 등"></div>`
+      : '';
+    const targetLabel = vt === 'percent' ? '연간 목표 (%) *' : '연간 목표 *';
+    const actualLabel = vt === 'percent' ? '현재 실적 (%)' : '현재 실적';
+    return typeSelect + `
+      <div class="form-field"><label>${targetLabel}</label><input name="target" type="number" step="any" value="${esc(kpiForm.target)}"></div>
+      <div class="form-field"><label>${actualLabel}</label><input name="actual" type="number" step="any" value="${esc(kpiForm.actual)}"></div>
+      ${unitField}`;
+  }
+
+  function readKpiFormFromDom() {
+    const form = document.getElementById('kpi-form');
+    if (!form) return ui.kpiForm || defaultKpiForm();
+    const fd = new FormData(form);
+    return {
+      departmentId: fd.get('departmentId') || defaultKpiForm().departmentId,
+      name: (fd.get('name') || '').toString(),
+      description: (fd.get('description') || '').toString(),
+      valueType: (fd.get('valueType') || 'number').toString(),
+      target: (fd.get('target') || '').toString(),
+      actual: (fd.get('actual') || '').toString(),
+      unit: (fd.get('unit') || '').toString(),
+      progressRate: (fd.get('progressRate') || '').toString(),
+      weight: (fd.get('weight') || '').toString(),
+      owner: (fd.get('owner') || '').toString(),
+      status: (fd.get('status') || 'on-track').toString(),
+    };
+  }
+
+  function renderInput() {
+    const kpis = filterKpis();
+    const okrs = data.okrs.filter(o => o.year === YEAR && (ui.department === 'all' || o.departmentId === ui.department));
+    const kpiForm = ui.kpiForm || defaultKpiForm();
+
+    if (ui.inputMode === 'kpi') {
+      return `<div class="view-header"><div><h2>데이터 입력</h2><p>연간 KPI와 분기 OKR을 등록·수정합니다</p></div></div>
+        ${ui.message ? `<div class="form-message ${ui.message.type}">${esc(ui.message.text)}</div>` : ''}
+        <div class="input-mode-tabs">
+          <button type="button" class="input-mode-tab active" data-input-mode="kpi">연간 KPI ${ui.editingKpiId?'수정':'등록'}</button>
+          <button type="button" class="input-mode-tab" data-input-mode="okr">분기 OKR 등록</button>
+        </div>
+        <div class="input-layout">
+          <form class="panel input-form" id="kpi-form">
+            <h3>${ui.editingKpiId ? 'KPI 수정' : '새 KPI 등록'}</h3>
+            <div class="form-grid">
+              <div class="form-field"><label>부서</label><select name="departmentId">${DEPARTMENTS.map(d=>`<option value="${d.id}" ${kpiForm.departmentId===d.id?'selected':''}>${esc(d.name)}</option>`).join('')}</select></div>
+              <div class="form-field"><label>연도</label><input type="number" value="${YEAR}" disabled></div>
+              <div class="form-field full"><label>지표명 *</label><input name="name" value="${esc(kpiForm.name)}" placeholder="예: 핵심인재 리텐션율"></div>
+              <div class="form-field full"><label>설명</label><textarea name="description" rows="2">${esc(kpiForm.description)}</textarea></div>
+              ${renderKpiFormFields(kpiForm)}
+              <div class="form-field"><label>가중치 (%) *</label><input name="weight" type="number" step="any" value="${esc(kpiForm.weight)}"></div>
+              <div class="form-field"><label>담당자</label><input name="owner" value="${esc(kpiForm.owner)}"></div>
+              <div class="form-field"><label>상태</label><select name="status">${['on-track','at-risk','behind','completed'].map(s=>`<option value="${s}" ${kpiForm.status===s?'selected':''}>${STATUS_LABELS[s]}</option>`).join('')}</select></div>
+            </div>
+            <div class="form-actions"><button type="submit" class="btn-primary">${ui.editingKpiId?'수정 저장':'KPI 등록'}</button>${ui.editingKpiId?'<button type="button" class="btn-secondary" data-kpi-reset>취소</button>':''}</div>
+          </form>
+          <section class="panel input-list"><h3>등록된 KPI (${kpis.length})</h3><div class="input-list-items">
+            ${kpis.length ? kpis.map(k=>`<div class="input-list-item"><div><span class="list-item-tag">${esc(dept(k.departmentId)?.shortName)}</span><strong>${esc(k.name)}</strong><div class="list-item-meta">목표 ${esc(formatKpiValue(k, 'target'))} · 가중치 ${k.weight}%</div></div>
+              <div class="list-item-actions"><button type="button" class="icon-btn" data-load-kpi="${k.id}">✎</button><button type="button" class="icon-btn" data-del-kpi="${k.id}">🗑</button></div></div>`).join('') : '<p class="list-empty">등록된 KPI가 없습니다.</p>'}
+          </div></section>
+        </div>`;
+    }
+
+    const okrMeta = ui.okrMeta || defaultOkrMeta();
+    const objectiveDrafts = ui.objectiveDrafts.length ? ui.objectiveDrafts : [newObjectiveDraft()];
+    const validCount = objectiveDrafts.filter(o => o.objective.trim()).length;
+
+    return `<div class="view-header"><div><h2>데이터 입력</h2><p>연간 KPI와 분기 OKR(Objective · KR)을 등록·수정합니다</p></div></div>
+      ${ui.message ? `<div class="form-message ${ui.message.type}">${esc(ui.message.text)}</div>` : ''}
+      <div class="input-mode-tabs">
+        <button type="button" class="input-mode-tab" data-input-mode="kpi">연간 KPI 등록</button>
+        <button type="button" class="input-mode-tab active" data-input-mode="okr">분기 OKR ${ui.editingOkrId?'수정':'등록'}</button>
+      </div>
+      <div class="input-layout input-layout-wide">
+        <form class="panel input-form" id="okr-form">
+          <h3>${ui.editingOkrId ? 'OKR 수정' : '새 OKR 등록'}</h3>
+          <div class="form-grid">
+            <div class="form-field"><label>부서</label><select name="departmentId">${DEPARTMENTS.map(d=>`<option value="${d.id}" ${okrMeta.departmentId===d.id?'selected':''}>${esc(d.name)}</option>`).join('')}</select></div>
+            <div class="form-field"><label>연도</label><input type="number" value="${YEAR}" disabled></div>
+            <div class="form-field"><label>분기 *</label><select name="quarter">${Object.keys(QUARTER_LABELS).map(q=>`<option value="${q}" ${okrMeta.quarter===q?'selected':''}>${QUARTER_LABELS[q]}</option>`).join('')}</select></div>
+            <div class="form-field"><label>담당</label><input name="owner" value="${esc(okrMeta.owner)}" placeholder="팀명 또는 담당자"></div>
+          </div>
+          <div class="objectives-section">
+            <div class="kr-form-header">
+              <h4>Objectives</h4>
+              ${!ui.editingOkrId ? `<button type="button" class="btn-text" data-add-objective>+ Objective 추가</button>` : ''}
+            </div>
+            ${objectiveDrafts.map((obj, objIndex) => `
+              <div class="objective-block" data-obj-id="${obj.id}">
+                <div class="objective-block-header">
+                  <span class="obj-index">O${objIndex + 1}</span>
+                  ${!ui.editingOkrId && objectiveDrafts.length > 1 ? `<button type="button" class="icon-btn" data-remove-objective="${obj.id}">🗑</button>` : ''}
+                </div>
+                <div class="form-field full"><label>Objective (목표) *</label>
+                  <textarea data-obj-field="objective" rows="2" placeholder="이번 분기 달성하고자 하는 핵심 목표">${esc(obj.objective)}</textarea></div>
+                <div class="form-grid compact">
+                  <div class="form-field"><label>달성률 (%)</label>
+                    <input type="number" data-obj-field="progressRate" value="${esc(obj.progressRate)}" placeholder="비우면 KR 평균"></div>
+                  <div class="form-field full"><label>진행현황 (텍스트)</label>
+                    <textarea data-obj-field="progressNote" rows="2" placeholder="Objective 진행 상황">${esc(obj.progressNote)}</textarea></div>
+                </div>
+                <div class="kr-form-section">
+                  <div class="kr-form-header"><h4>Key Results</h4><button type="button" class="btn-text" data-add-kr="${obj.id}">+ KR 추가</button></div>
+                  ${obj.keyResults.map((kr, krIndex) => `
+                    <div class="kr-form-row-extended" data-kr-id="${kr.id}">
+                      <span class="kr-index">KR${krIndex + 1}</span>
+                      <input placeholder="핵심 결과" value="${esc(kr.title)}" data-kr-field="title">
+                      <div class="kr-rate-field">
+                        <span class="kr-fixed-target">목표 100%</span>
+                        <input type="number" step="any" min="0" max="150" placeholder="달성율" value="${esc(kr.achievementRate)}" data-kr-field="achievementRate" title="달성율 (%)">
+                        <span class="kr-unit-suffix">%</span>
+                      </div>
+                      <button type="button" class="icon-btn" data-remove-kr="${obj.id}:${kr.id}" ${obj.keyResults.length<=1?'disabled':''}>🗑</button>
+                      <textarea class="kr-note-input" data-kr-field="progressNote" placeholder="KR 진행현황 (텍스트)" rows="1">${esc(kr.progressNote)}</textarea>
+                    </div>`).join('')}
+                </div>
+              </div>`).join('')}
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">${ui.editingOkrId ? '수정 저장' : `OKR ${validCount || ''}건 등록`}</button>
+            ${ui.editingOkrId ? '<button type="button" class="btn-secondary" data-okr-reset>취소</button>' : ''}
+          </div>
+        </form>
+        <section class="panel input-list"><h3>등록된 OKR (${okrs.length})</h3><div class="input-list-items">
+          ${okrs.length ? okrs.map(o=>`<div class="input-list-item"><div><span class="list-item-tag">${esc(dept(o.departmentId)?.shortName)} · ${o.quarter}</span><strong>${esc(o.objective)}</strong><div class="list-item-meta">KR ${o.keyResults.length}개${o.progressNote ? ' · 진행현황 있음' : ''}</div></div>
+            <div class="list-item-actions"><button type="button" class="icon-btn" data-load-okr="${o.id}">✎</button><button type="button" class="icon-btn" data-del-okr="${o.id}">🗑</button></div></div>`).join('') : '<p class="list-empty">등록된 OKR이 없습니다.</p>'}
+        </div></section>
+      </div>`;
+  }
+
+  function defaultKpiForm() {
+    return { departmentId: ui.department !== 'all' ? ui.department : 'talent-management', name:'', description:'', valueType:'number', target:'', actual:'', unit:'', progressRate:'', weight:'', owner:'', status:'on-track' };
+  }
+
+  function defaultOkrMeta() {
+    return { departmentId: ui.department !== 'all' ? ui.department : 'talent-management', quarter: ui.quarter, owner: '' };
+  }
+
+  function newKr() {
+    return { id: uid(), title: '', achievementRate: '0', progressNote: '' };
+  }
+
+  function krToDraft(kr) {
+    return {
+      id: kr.id,
+      title: kr.title,
+      achievementRate: String(calcKrProgress(kr)),
+      progressNote: kr.progressNote ?? '',
+    };
+  }
+
+  function newObjectiveDraft() {
+    return { id: uid(), objective: '', progressNote: '', progressRate: '', keyResults: [newKr()] };
+  }
+
+  function parseRate(val) {
+    const trimmed = String(val ?? '').trim();
+    if (!trimmed) return null;
+    const n = parseFloat(trimmed);
+    return isNaN(n) ? null : n;
+  }
+
+  function buildKeyResults(drafts) {
+    return drafts.filter(kr => kr.title.trim()).map(kr => ({
+      id: kr.id,
+      title: kr.title.trim(),
+      target: KR_TARGET_PERCENT,
+      actual: parseFloat(kr.achievementRate) || 0,
+      unit: '%',
+      progressNote: (kr.progressNote || '').trim(),
+      progressRate: null,
+    }));
+  }
+
+  function collectObjectiveDrafts() {
+    const form = document.getElementById('okr-form');
+    if (!form) return;
+    const drafts = [];
+    form.querySelectorAll('.objective-block').forEach(block => {
+      const obj = {
+        id: block.dataset.objId,
+        objective: block.querySelector('[data-obj-field=objective]')?.value || '',
+        progressNote: block.querySelector('[data-obj-field=progressNote]')?.value || '',
+        progressRate: block.querySelector('[data-obj-field=progressRate]')?.value || '',
+        keyResults: [],
+      };
+      block.querySelectorAll('.kr-form-row-extended').forEach(row => {
+        obj.keyResults.push({
+          id: row.dataset.krId,
+          title: row.querySelector('[data-kr-field=title]')?.value || '',
+          achievementRate: row.querySelector('[data-kr-field=achievementRate]')?.value || '0',
+          progressNote: row.querySelector('[data-kr-field=progressNote]')?.value || '',
+        });
+      });
+      drafts.push(obj);
+    });
+    if (drafts.length) ui.objectiveDrafts = drafts;
+  }
+
+  function collectOkrMeta() {
+    const form = document.getElementById('okr-form');
+    if (!form) return;
+    ui.okrMeta = {
+      departmentId: form.querySelector('[name=departmentId]')?.value,
+      quarter: form.querySelector('[name=quarter]')?.value,
+      owner: form.querySelector('[name=owner]')?.value || '',
+    };
+  }
+
+  function resetOkrForm() {
+    ui.editingOkrId = null;
+    ui.okrMeta = null;
+    ui.objectiveDrafts = [];
+  }
+
+  function handleKpiSubmit(e) {
+    e.preventDefault();
+    const kpiForm = document.getElementById('kpi-form');
+    if (!kpiForm) return;
+    const fd = new FormData(kpiForm);
+    const name = (fd.get('name') || '').toString().trim();
+    const valueType = (fd.get('valueType') || 'number').toString();
+    const weight = parseFloat(fd.get('weight'));
+    const progressRate = parseRate((fd.get('progressRate') || '').toString());
+    if (!name) return showMsg('error', '지표명을 입력해 주세요.');
+    if (isNaN(weight)) return showMsg('error', '가중치는 숫자로 입력해 주세요.');
+    const built = buildKpiFieldValues(valueType, fd.get('target'), fd.get('actual'), fd.get('unit'));
+    if (built.error) return showMsg('error', built.error);
+    const payload = {
+      departmentId: fd.get('departmentId'), year: YEAR, name, description: (fd.get('description') || '').toString().trim(),
+      valueType, target: built.target, actual: built.actual, unit: built.unit, progressRate,
+      weight, status: fd.get('status'), owner: (fd.get('owner') || '').toString().trim() || '담당자', updatedAt: today(),
+    };
+    if (ui.editingKpiId) {
+      const k = data.kpis.find(x => x.id === ui.editingKpiId);
+      Object.assign(k, payload);
+      showMsg('success', 'KPI가 수정되었습니다.');
+    } else {
+      data.kpis.push({ id: uid(), ...payload });
+      showMsg('success', 'KPI가 등록되었습니다.');
+    }
+    ui.editingKpiId = null; ui.kpiForm = null; saveData();
+  }
+
+  function handleOkrSubmit(e) {
+    e.preventDefault();
+    collectObjectiveDrafts();
+    collectOkrMeta();
+    const okrMeta = ui.okrMeta || defaultOkrMeta();
+    const validObjectives = ui.objectiveDrafts.filter(o => o.objective.trim());
+    if (!validObjectives.length) return showMsg('error', 'Objective를 최소 1개 이상 입력해 주세요.');
+    for (const obj of validObjectives) {
+      const krs = buildKeyResults(obj.keyResults);
+      if (!krs.length) {
+        const preview = obj.objective.slice(0, 20);
+        return showMsg('error', `「${preview}${obj.objective.length > 20 ? '…' : ''}」에 Key Result를 최소 1개 입력해 주세요.`);
+      }
+    }
+    const owner = (okrMeta.owner || '').trim() || dept(okrMeta.departmentId)?.name || '담당팀';
+    if (ui.editingOkrId && validObjectives.length === 1) {
+      const obj = validObjectives[0];
+      const o = data.okrs.find(x => x.id === ui.editingOkrId);
+      Object.assign(o, {
+        departmentId: okrMeta.departmentId, year: YEAR, quarter: okrMeta.quarter,
+        objective: obj.objective.trim(), keyResults: buildKeyResults(obj.keyResults), owner,
+        progressNote: obj.progressNote.trim(), progressRate: parseRate(obj.progressRate), updatedAt: today(),
+      });
+      showMsg('success', 'OKR이 수정되었습니다.');
+    } else {
+      const newOkrs = validObjectives.map(obj => ({
+        id: uid(),
+        departmentId: okrMeta.departmentId, year: YEAR, quarter: okrMeta.quarter,
+        objective: obj.objective.trim(), keyResults: buildKeyResults(obj.keyResults), owner,
+        progressNote: obj.progressNote.trim(), progressRate: parseRate(obj.progressRate), updatedAt: today(),
+      }));
+      data.okrs.push(...newOkrs);
+      showMsg('success', `OKR ${newOkrs.length}건이 등록되었습니다.`);
+    }
+    resetOkrForm(); saveData();
+  }
+
+  function renderAccount() {
+    return `<div class="view-header"><div><h2>내 계정</h2><p>비밀번호 변경 및 프로필 관리</p></div></div>
+      ${ui.message ? `<div class="form-message ${ui.message.type}">${esc(ui.message.text)}</div>` : ''}
+      <div class="input-layout">
+        <section class="panel">
+          <h3>프로필</h3>
+          <div class="form-grid" style="margin-top:16px">
+            <div class="form-field"><label>이름</label><input id="account-name" value="${esc(userProfile?.displayName || '')}"></div>
+            <div class="form-field"><label>이메일</label><input value="${esc(authUser?.email || '')}" disabled></div>
+            <div class="form-field"><label>역할</label><input value="${userProfile?.role === 'admin' ? '관리자' : '회원'}" disabled></div>
+          </div>
+          <div class="form-actions"><button type="button" class="btn-primary" data-account-save="name">이름 저장</button></div>
+        </section>
+        <section class="panel">
+          <h3>비밀번호 변경</h3>
+          <div class="form-grid" style="margin-top:16px">
+            <div class="form-field full"><label>새 비밀번호</label><input type="password" id="account-newpw" minlength="6" placeholder="6자 이상"></div>
+            <div class="form-field full"><label>새 비밀번호 확인</label><input type="password" id="account-newpw2" minlength="6"></div>
+          </div>
+          <div class="form-actions"><button type="button" class="btn-primary" data-account-save="password">비밀번호 변경</button></div>
+        </section>
+      </div>`;
+  }
+
+  function renderUsers() {
+    if (!isAdmin()) {
+      return `<div class="empty-state"><p>관리자만 접근할 수 있습니다.</p></div>`;
+    }
+    return `<div class="view-header"><div><h2>회원 관리</h2><p>팀원 계정 등록 · 역할 · 상태 관리</p></div></div>
+      ${ui.message ? `<div class="form-message ${ui.message.type}">${esc(ui.message.text)}</div>` : ''}
+      <div class="excel-actions">
+        <button type="button" class="btn-secondary" data-excel-action="template">양식 다운로드</button>
+        <button type="button" class="btn-secondary" data-excel-action="export">회원 내보내기</button>
+        <button type="button" class="btn-secondary" data-excel-action="upload"${excelImporting ? ' disabled' : ''}>${excelImporting ? '업로드 중…' : 'Excel 업로드'}</button>
+        <input type="file" id="excel-upload-input" accept=".xlsx,.xls" hidden>
+      </div>
+      <p class="excel-note">기존 회원 비밀번호는 Excel로 내보내거나 변경할 수 없습니다. 비밀번호 변경은 <strong>내 계정</strong> 또는 재설정 메일(✉)을 사용하세요.</p>
+      <div class="input-layout">
+        <form class="panel input-form" id="user-create-form">
+          <h3>새 회원 등록</h3>
+          <div class="form-grid">
+            <div class="form-field"><label>이름 *</label><input name="displayName" required placeholder="홍길동"></div>
+            <div class="form-field"><label>이메일 *</label><input name="email" type="email" required placeholder="user@company.com"></div>
+            <div class="form-field"><label>임시 비밀번호 *</label><input name="password" type="password" minlength="6" required placeholder="6자 이상"></div>
+            <div class="form-field"><label>역할</label><select name="role"><option value="member">회원</option><option value="admin">관리자</option></select></div>
+          </div>
+          <div class="form-actions"><button type="submit" class="btn-primary">회원 등록</button></div>
+        </form>
+        <section class="panel input-list">
+          <h3>등록된 회원 (${allProfiles.length})</h3>
+          <div class="users-table-wrap">
+            <table>
+              <thead><tr><th>이름</th><th>이메일</th><th>역할</th><th>상태</th><th>관리</th></tr></thead>
+              <tbody>
+                ${allProfiles.length ? allProfiles.map(p => {
+                  const isSelf = p.id === authUser?.id;
+                  return `<tr>
+                    <td>${esc(p.displayName || '—')}</td>
+                    <td>${esc(p.email)}</td>
+                    <td>${p.role === 'admin' ? '관리자' : '회원'}</td>
+                    <td class="${p.status === 'active' ? 'status-active' : 'status-suspended'}">${p.status === 'active' ? '활성' : '정지'}</td>
+                    <td>${isSelf ? '<span class="list-item-meta">본인</span>' : `<div class="list-item-actions">
+                      <select data-user-role="${p.id}" style="width:auto;padding:4px 8px">
+                        <option value="member" ${p.role==='member'?'selected':''}>회원</option>
+                        <option value="admin" ${p.role==='admin'?'selected':''}>관리자</option>
+                      </select>
+                      <button type="button" class="icon-btn" data-user-status="${p.id}" title="${p.status==='active'?'정지':'활성화'}">${p.status==='active'?'⏸':'▶'}</button>
+                      <button type="button" class="icon-btn" data-user-reset="${p.id}" title="비밀번호 재설정 메일">✉</button>
+                    </div>`}
+                    </td></tr>`;
+                }).join('') : '<tr><td colspan="5" class="list-empty">등록된 회원이 없습니다.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>`;
+  }
+
+  async function handleAccountNameSave() {
+    const name = document.getElementById('account-name')?.value.trim();
+    if (!name) return showMsg('error', '이름을 입력해 주세요.');
+    const { error } = await supabaseClient.from('profiles').update({ display_name: name, updated_at: new Date().toISOString() }).eq('id', authUser.id);
+    if (error) return showMsg('error', authErrorText(error));
+    userProfile = { ...userProfile, displayName: name };
+    showMsg('success', '이름이 저장되었습니다.');
+    requestRender();
+  }
+
+  async function handleAccountPasswordSave() {
+    const p1 = document.getElementById('account-newpw')?.value;
+    const p2 = document.getElementById('account-newpw2')?.value;
+    if (!p1 || p1.length < 6) return showMsg('error', '비밀번호는 6자 이상이어야 합니다.');
+    if (p1 !== p2) return showMsg('error', '비밀번호가 일치하지 않습니다.');
+    const { error } = await supabaseClient.auth.updateUser({ password: p1 });
+    if (error) return showMsg('error', authErrorText(error));
+    showMsg('success', '비밀번호가 변경되었습니다.');
+  }
+
+  async function handleCreateUser(e) {
+    e.preventDefault();
+    const form = e.target;
+    const fd = new FormData(form);
+    const displayName = (fd.get('displayName') || '').toString().trim();
+    const email = (fd.get('email') || '').toString().trim();
+    const password = (fd.get('password') || '').toString();
+    const role = (fd.get('role') || 'member').toString();
+    const { data: { session: adminSession } } = await supabaseClient.auth.getSession();
+    const { data, error } = await supabaseClient.auth.signUp({
+      email, password,
+      options: { data: { display_name: displayName } },
+    });
+    if (error) return showMsg('error', authErrorText(error));
+    if (adminSession) await supabaseClient.auth.setSession(adminSession);
+    if (data.user) {
+      await supabaseClient.from('profiles').update({ display_name: displayName, role, updated_at: new Date().toISOString() }).eq('id', data.user.id);
+    }
+    allProfiles = await fetchAllProfiles();
+    form.reset();
+    showMsg('success', `회원 ${email} 이(가) 등록되었습니다.`);
+    requestRender();
+  }
+
+  async function handleUserRoleChange(userId, role) {
+    if (userId === authUser?.id) return showMsg('error', '본인 역할은 변경할 수 없습니다.');
+    const { error } = await supabaseClient.from('profiles').update({ role, updated_at: new Date().toISOString() }).eq('id', userId);
+    if (error) return showMsg('error', authErrorText(error));
+    allProfiles = await fetchAllProfiles();
+    showMsg('success', '역할이 변경되었습니다.');
+    requestRender();
+  }
+
+  async function handleUserStatusToggle(userId) {
+    if (userId === authUser?.id) return showMsg('error', '본인 계정은 정지할 수 없습니다.');
+    const p = allProfiles.find(x => x.id === userId);
+    if (!p) return;
+    const newStatus = p.status === 'active' ? 'suspended' : 'active';
+    const { error } = await supabaseClient.from('profiles').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', userId);
+    if (error) return showMsg('error', authErrorText(error));
+    allProfiles = await fetchAllProfiles();
+    showMsg('success', newStatus === 'suspended' ? '계정이 정지되었습니다.' : '계정이 활성화되었습니다.');
+    requestRender();
+  }
+
+  async function handleUserResetEmail(userId) {
+    const p = allProfiles.find(x => x.id === userId);
+    if (!p?.email) return;
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(p.email, {
+      redirectTo: window.location.href.split('#')[0],
+    });
+    if (error) return showMsg('error', authErrorText(error));
+    showMsg('success', `${p.email} 로 비밀번호 재설정 메일을 보냈습니다.`);
+  }
+
+  function navigateToTarget(opts) {
+    const { tab, dept, kpiId, okrId, kpiFilter, scrollTo } = opts;
+    if (scrollTo) {
+      if (ui.tab !== 'overview') ui.tab = 'overview';
+      requestRender({ nav: true });
+      setTimeout(() => {
+        document.getElementById(scrollTo)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 120);
+      return;
+    }
+    ui.kpiStatusFilter = kpiFilter || null;
+    if (tab) ui.tab = tab;
+    if (dept !== undefined) ui.department = dept;
+    if (kpiId) {
+      ui.navHighlight = { type: 'kpi', id: kpiId };
+    } else if (okrId) {
+      ui.navHighlight = { type: 'okr', id: okrId };
+    } else if (kpiFilter === 'completed') {
+      const completed = data.kpis.filter(k =>
+        k.year === YEAR && k.status === 'completed' &&
+        (ui.department === 'all' || k.departmentId === ui.department)
+      );
+      ui.navHighlight = completed.length ? { type: 'kpi', id: completed[0].id } : null;
+    } else {
+      ui.navHighlight = null;
+    }
+    requestRender({ nav: true });
+  }
+
+  function applyNavHighlight() {
+    const h = ui.navHighlight;
+    if (!h) return;
+    const el = document.getElementById(h.type === 'kpi' ? `kpi-row-${h.id}` : `okr-card-${h.id}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(() => {
+        ui.navHighlight = null;
+        requestRender();
+      }, 2500);
+    } else {
+      ui.navHighlight = null;
+    }
+  }
+
+  function exportMemberTemplate() {
+    if (typeof XLSX === 'undefined') return showMsg('error', 'Excel 라이브러리를 불러오지 못했습니다.');
+    const rows = [
+      ['이름', '이메일', '임시비밀번호', '역할', '상태'],
+      ['홍길동', 'user@company.com', 'TempPass123!', 'member', 'active'],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '회원');
+    XLSX.writeFile(wb, '회원등록_양식.xlsx');
+  }
+
+  function exportMembers() {
+    if (typeof XLSX === 'undefined') return showMsg('error', 'Excel 라이브러리를 불러오지 못했습니다.');
+    const rows = [
+      ['이름', '이메일', '역할', '상태'],
+      ...allProfiles.map(p => [p.displayName || '', p.email, p.role, p.status]),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '회원');
+    XLSX.writeFile(wb, `회원목록_${today()}.xlsx`);
+  }
+
+  async function importMembers(file) {
+    if (!file || typeof XLSX === 'undefined') return showMsg('error', 'Excel 파일을 읽을 수 없습니다.');
+    excelImporting = true;
+    showMsg('success', 'Excel 업로드 처리 중…');
+    requestRender();
+    let success = 0;
+    let fail = 0;
+    const errors = [];
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      const { data: { session: adminSession } } = await supabaseClient.auth.getSession();
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const name = (row['이름'] || row.displayName || '').toString().trim();
+        const email = (row['이메일'] || row.email || '').toString().trim().toLowerCase();
+        const password = (row['임시비밀번호'] || row.password || '').toString();
+        let role = (row['역할'] || row.role || 'member').toString().trim().toLowerCase();
+        let status = (row['상태'] || row.status || 'active').toString().trim().toLowerCase();
+        if (!email) { fail++; errors.push(`${i + 2}행: 이메일 없음`); continue; }
+        const existing = allProfiles.find(p => p.email.toLowerCase() === email);
+        if (existing) {
+          const updates = { updated_at: new Date().toISOString() };
+          if (name) updates.display_name = name;
+          if (role === 'admin' || role === 'member') updates.role = role;
+          if (status === 'active' || status === 'suspended') updates.status = status;
+          const { error } = await supabaseClient.from('profiles').update(updates).eq('id', existing.id);
+          if (error) { fail++; errors.push(`${email}: ${authErrorText(error)}`); }
+          else success++;
+        } else {
+          if (!name) { fail++; errors.push(`${email}: 신규 회원은 이름 필수`); continue; }
+          if (!password || password.length < 6) { fail++; errors.push(`${email}: 임시비밀번호 6자 이상 필수`); continue; }
+          if (role !== 'admin' && role !== 'member') role = 'member';
+          if (status !== 'active' && status !== 'suspended') status = 'active';
+          const { data, error } = await supabaseClient.auth.signUp({
+            email, password,
+            options: { data: { display_name: name } },
+          });
+          if (error) { fail++; errors.push(`${email}: ${authErrorText(error)}`); continue; }
+          if (adminSession) await supabaseClient.auth.setSession(adminSession);
+          if (data.user) {
+            const { error: uErr } = await supabaseClient.from('profiles').update({
+              display_name: name, role, status, updated_at: new Date().toISOString(),
+            }).eq('id', data.user.id);
+            if (uErr) { fail++; errors.push(`${email}: ${authErrorText(uErr)}`); continue; }
+          }
+          success++;
+        }
+      }
+      allProfiles = await fetchAllProfiles();
+    } catch (err) {
+      excelImporting = false;
+      return showMsg('error', 'Excel 처리 실패: ' + (err.message || err));
+    }
+    excelImporting = false;
+    const summary = `처리 완료: 성공 ${success}건, 실패 ${fail}건`;
+    const detail = errors.length
+      ? '\n' + errors.slice(0, 5).join('\n') + (errors.length > 5 ? `\n… 외 ${errors.length - 5}건` : '')
+      : '';
+    showMsg(fail && !success ? 'error' : fail ? 'error' : 'success', summary + detail);
+    requestRender();
+  }
+
+  function renderChart() {
+    if (ui.tab !== 'overview' || typeof Chart === 'undefined') return;
+    const canvas = document.getElementById('dept-chart');
+    if (!canvas) return;
+    const deptIds = ui.department === 'all' ? DEPARTMENTS.map(d => d.id) : [ui.department];
+    const labels = [], kpiData = [], okrData = [];
+    deptIds.forEach(id => {
+      const d = dept(id);
+      labels.push(d.shortName);
+      kpiData.push(calcWeightedKpiScore(data.kpis.filter(k => k.year === YEAR && k.departmentId === id)));
+      okrData.push(calcAvgOkrProgress(data.okrs.filter(o => o.year === YEAR && o.quarter === ui.quarter && o.departmentId === id)));
+    });
+    if (chartInstance) chartInstance.destroy();
+    chartInstance = new Chart(canvas, {
+      type: 'bar',
+      data: { labels, datasets: [
+        { label: 'KPI 달성률', data: kpiData, backgroundColor: '#2563eb', borderRadius: 4, maxBarThickness: 40 },
+        { label: 'OKR 진행률', data: okrData, backgroundColor: '#7c3aed', borderRadius: 4, maxBarThickness: 40 },
+      ]},
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } } }
+    });
+  }
+
+  function initEvents() {
+    document.body.addEventListener('click', (e) => {
+      const authEl = e.target.closest('[data-auth-action]');
+      if (authEl) {
+        if (authEl.dataset.authAction === 'show-login') { authView = 'login'; authMsg = null; renderAuthScreen(); return; }
+        if (authEl.dataset.authAction === 'show-forgot') { authView = 'forgot'; authMsg = null; renderAuthScreen(); return; }
+        if (authEl.dataset.authAction === 'logout') { handleLogout(); return; }
+      }
+      const accountEl = e.target.closest('[data-account-save]');
+      if (accountEl) {
+        if (accountEl.dataset.accountSave === 'name') handleAccountNameSave();
+        if (accountEl.dataset.accountSave === 'password') handleAccountPasswordSave();
+        return;
+      }
+      if (e.target.closest('[data-user-status]')) {
+        handleUserStatusToggle(e.target.closest('[data-user-status]').dataset.userStatus);
+        return;
+      }
+      if (e.target.closest('[data-user-reset]')) {
+        handleUserResetEmail(e.target.closest('[data-user-reset]').dataset.userReset);
+        return;
+      }
+    });
+
+    document.body.addEventListener('change', (e) => {
+      if (e.target.dataset.userRole) {
+        handleUserRoleChange(e.target.dataset.userRole, e.target.value);
+      }
+      if (e.target.id === 'excel-upload-input') {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (file) importMembers(file);
+      }
+    });
+
+    document.body.addEventListener('submit', (e) => {
+      if (e.target.id === 'login-form') { handleLogin(e); return; }
+      if (e.target.id === 'forgot-form') { handleForgot(e); return; }
+      if (e.target.id === 'bootstrap-form') { handleBootstrap(e); return; }
+      if (e.target.id === 'reset-form') { handleResetPassword(e); return; }
+      if (e.target.id === 'user-create-form') { handleCreateUser(e); return; }
+    });
+
+    const app = document.getElementById('app-root');
+    if (!app) return;
+    app.addEventListener('click', (e) => {
+      const navEl = e.target.closest('[data-nav-tab],[data-nav-scroll],[data-nav-kpi-id],[data-nav-okr-id],[data-clear-kpi-filter],[data-excel-action]');
+      if (navEl) {
+        if (navEl.hasAttribute('data-clear-kpi-filter')) {
+          ui.kpiStatusFilter = null;
+          requestRender();
+          return;
+        }
+        if (navEl.dataset.excelAction === 'template') { exportMemberTemplate(); return; }
+        if (navEl.dataset.excelAction === 'export') { exportMembers(); return; }
+        if (navEl.dataset.excelAction === 'upload') { document.getElementById('excel-upload-input')?.click(); return; }
+        if (navEl.dataset.navScroll) {
+          navigateToTarget({ scrollTo: navEl.dataset.navScroll });
+          return;
+        }
+        if (navEl.dataset.navKpiId) {
+          navigateToTarget({ tab: 'kpi', dept: navEl.dataset.navDept, kpiId: navEl.dataset.navKpiId });
+          return;
+        }
+        if (navEl.dataset.navOkrId) {
+          navigateToTarget({ tab: 'okr', dept: navEl.dataset.navDept, okrId: navEl.dataset.navOkrId });
+          return;
+        }
+        if (navEl.dataset.navTab) {
+          navigateToTarget({ tab: navEl.dataset.navTab, kpiFilter: navEl.dataset.navKpiFilter || null });
+          return;
+        }
+      }
+
+      const el = e.target.closest('[data-dept],[data-tab],[data-kpi-edit],[data-kpi-save],[data-kpi-cancel],[data-kr-edit],[data-kr-save],[data-kr-cancel],[data-okr-progress-edit],[data-okr-progress-save],[data-okr-progress-cancel],[data-input-mode],[data-kpi-reset],[data-load-kpi],[data-del-kpi],[data-load-okr],[data-del-okr],[data-okr-reset],[data-add-objective],[data-remove-objective],[data-add-kr],[data-remove-kr]');
+      if (!el) return;
+
+      if (el.dataset.tab || el.dataset.dept !== undefined) {
+        if (el.dataset.tab) ui.tab = el.dataset.tab;
+        if (el.dataset.dept !== undefined) ui.department = el.dataset.dept;
+        if (!el.dataset.tab && (ui.tab === 'input' || ui.tab === 'users' || ui.tab === 'account')) {
+          ui.tab = 'overview';
+        }
+        if (ui.tab === 'users' && isAdmin()) {
+          fetchAllProfiles().then(p => { allProfiles = p; requestRender({ nav: true }); }).catch(() => requestRender({ nav: true }));
+          return;
+        }
+        requestRender({ nav: true });
+        return;
+      }
+      if (el.dataset.kpiEdit) {
+        const k = data.kpis.find(x => x.id === el.dataset.kpiEdit);
+        ui.kpiEditId = k.id;
+        ui.kpiEditVal = String(k.actual);
+        ui.kpiEditProgressRate = k.progressRate != null ? String(k.progressRate) : '';
+        requestRender();
+        setTimeout(() => document.getElementById('kpi-edit-input')?.focus(), 0);
+        return;
+      }
+      if (el.dataset.kpiSave) {
+        const k = data.kpis.find(x => x.id === el.dataset.kpiSave);
+        const type = getKpiValueType(k);
+        if (type === 'text') {
+          const actual = (document.getElementById('kpi-edit-input')?.value ?? '').trim();
+          const rateVal = (document.getElementById('kpi-edit-progress')?.value ?? '').trim();
+          const progressRate = rateVal === '' ? null : parseFloat(rateVal);
+          k.actual = actual;
+          k.progressRate = progressRate != null && !isNaN(progressRate) ? progressRate : null;
+          k.updatedAt = today();
+          saveData();
+        } else {
+          const v = parseFloat(document.getElementById('kpi-edit-input')?.value);
+          if (!isNaN(v)) { k.actual = v; k.updatedAt = today(); saveData(); }
+        }
+        ui.kpiEditId = null; requestRender();
+        return;
+      }
+      if (el.hasAttribute('data-kpi-cancel')) { ui.kpiEditId = null; requestRender(); return; }
+
+      if (el.dataset.krEdit) {
+        const [okrId, krId] = el.dataset.krEdit.split(':');
+        const o = data.okrs.find(x => x.id === okrId);
+        const kr = o.keyResults.find(x => x.id === krId);
+        ui.krEdit = {
+          okrId, krId,
+          achievementRate: String(calcKrProgress(kr)),
+          progressNote: kr.progressNote ?? '',
+        };
+        requestRender();
+        setTimeout(() => document.getElementById('kr-edit-rate')?.focus(), 0);
+        return;
+      }
+      if (el.dataset.krSave) {
+        const [okrId, krId] = el.dataset.krSave.split(':');
+        const o = data.okrs.find(x => x.id === okrId);
+        const kr = o.keyResults.find(x => x.id === krId);
+        const rate = parseFloat(document.getElementById('kr-edit-rate')?.value);
+        const progressNote = (document.getElementById('kr-edit-note')?.value ?? '').trim();
+        if (!isNaN(rate)) {
+          kr.target = KR_TARGET_PERCENT;
+          kr.unit = '%';
+          kr.actual = rate;
+          kr.progressRate = null;
+          kr.progressNote = progressNote;
+          o.updatedAt = today();
+          saveData();
+        }
+        ui.krEdit = null; requestRender();
+        return;
+      }
+      if (el.hasAttribute('data-kr-cancel')) { ui.krEdit = null; requestRender(); return; }
+
+      if (el.dataset.okrProgressEdit) {
+        const o = data.okrs.find(x => x.id === el.dataset.okrProgressEdit);
+        ui.okrProgressEdit = {
+          okrId: o.id,
+          progressRate: o.progressRate != null ? String(o.progressRate) : '',
+          progressNote: o.progressNote ?? '',
+        };
+        requestRender();
+        return;
+      }
+      if (el.dataset.okrProgressSave) {
+        const o = data.okrs.find(x => x.id === el.dataset.okrProgressSave);
+        const rateVal = document.getElementById('okr-progress-rate')?.value ?? '';
+        const progressRate = rateVal.trim() === '' ? null : parseFloat(rateVal);
+        const progressNote = (document.getElementById('okr-progress-note')?.value ?? '').trim();
+        o.progressRate = progressRate != null && !isNaN(progressRate) ? progressRate : null;
+        o.progressNote = progressNote;
+        o.updatedAt = today();
+        saveData();
+        ui.okrProgressEdit = null; requestRender();
+        return;
+      }
+      if (el.hasAttribute('data-okr-progress-cancel')) { ui.okrProgressEdit = null; requestRender(); return; }
+
+      if (el.dataset.inputMode) {
+        ui.inputMode = el.dataset.inputMode;
+        requestRender({ nav: true });
+        return;
+      }
+      if (el.hasAttribute('data-kpi-reset')) { ui.editingKpiId = null; ui.kpiForm = null; requestRender(); return; }
+      if (el.dataset.loadKpi) {
+        const k = data.kpis.find(x => x.id === el.dataset.loadKpi);
+        ui.inputMode = 'kpi'; ui.editingKpiId = k.id;
+        ui.kpiForm = { departmentId: k.departmentId, name: k.name, description: k.description, valueType: getKpiValueType(k), target: String(k.target), actual: String(k.actual), unit: k.unit, progressRate: k.progressRate != null ? String(k.progressRate) : '', weight: String(k.weight), owner: k.owner, status: k.status };
+        requestRender({ nav: true });
+        return;
+      }
+      if (el.dataset.delKpi) {
+        if (confirm('이 KPI를 삭제하시겠습니까?')) { data.kpis = data.kpis.filter(x => x.id !== el.dataset.delKpi); saveData(); requestRender(); }
+        return;
+      }
+      if (el.dataset.loadOkr) {
+        const o = data.okrs.find(x => x.id === el.dataset.loadOkr);
+        ui.inputMode = 'okr'; ui.editingOkrId = o.id;
+        ui.okrMeta = { departmentId: o.departmentId, quarter: o.quarter, owner: o.owner };
+        ui.objectiveDrafts = [{
+          id: o.id, objective: o.objective,
+          progressNote: o.progressNote ?? '',
+          progressRate: o.progressRate != null ? String(o.progressRate) : '',
+          keyResults: o.keyResults.map(krToDraft),
+        }];
+        requestRender({ nav: true });
+        return;
+      }
+      if (el.dataset.delOkr) {
+        if (confirm('이 OKR을 삭제하시겠습니까?')) { data.okrs = data.okrs.filter(x => x.id !== el.dataset.delOkr); saveData(); requestRender(); }
+        return;
+      }
+      if (el.hasAttribute('data-okr-reset')) { resetOkrForm(); requestRender(); return; }
+
+      if (el.hasAttribute('data-add-objective')) {
+        collectObjectiveDrafts(); collectOkrMeta();
+        ui.objectiveDrafts.push(newObjectiveDraft());
+        requestRender();
+        return;
+      }
+      if (el.dataset.removeObjective) {
+        if (ui.objectiveDrafts.length <= 1) return;
+        collectObjectiveDrafts(); collectOkrMeta();
+        ui.objectiveDrafts = ui.objectiveDrafts.filter(o => o.id !== el.dataset.removeObjective);
+        requestRender();
+        return;
+      }
+      if (el.dataset.addKr) {
+        collectObjectiveDrafts(); collectOkrMeta();
+        const objId = el.dataset.addKr;
+        ui.objectiveDrafts = ui.objectiveDrafts.map(o => o.id === objId ? { ...o, keyResults: [...o.keyResults, newKr()] } : o);
+        requestRender();
+        return;
+      }
+      if (el.dataset.removeKr) {
+        const [objId, krId] = el.dataset.removeKr.split(':');
+        collectObjectiveDrafts(); collectOkrMeta();
+        ui.objectiveDrafts = ui.objectiveDrafts.map(o => {
+          if (o.id !== objId || o.keyResults.length <= 1) return o;
+          return { ...o, keyResults: o.keyResults.filter(kr => kr.id !== krId) };
+        });
+        requestRender();
+      }
+    });
+
+    app.addEventListener('change', (e) => {
+      if (e.target.id === 'quarter-select') {
+        ui.quarter = e.target.value;
+        requestRender({ nav: true });
+        return;
+      }
+      if (e.target.name === 'valueType' && e.target.closest('#kpi-form')) {
+        ui.kpiForm = readKpiFormFromDom();
+        requestRender();
+      }
+    });
+
+    app.addEventListener('submit', (e) => {
+      if (e.target.id === 'kpi-form') handleKpiSubmit(e);
+      else if (e.target.id === 'okr-form') handleOkrSubmit(e);
+    });
+  }
+
+  initEvents();
+  initAuth().catch(err => {
+    console.error(err);
+    authView = 'login';
+    authMsg = { type: 'error', text: '초기화 실패: ' + (err.message || err) };
+    renderAuthScreen();
+  });
+})();
+  </script>
+</body>
+</html>
